@@ -260,25 +260,33 @@ export class SessionManager {
     for (const rt of this.runtimes.values()) this.closeProcess(rt)
   }
 
-  respondApproval(id: string, requestId: string, decision: ApprovalDecision, message?: string): void {
+  /** False when the request is no longer pending (already answered, or gone). */
+  respondApproval(id: string, requestId: string, decision: ApprovalDecision, message?: string): boolean {
     const rt = this.runtimes.get(id)
     const p = rt?.pending.get(requestId)
-    if (!rt || !p || p.kind !== 'approval') return
+    if (!rt || !p || p.kind !== 'approval') return false
     rt.pending.delete(requestId)
     if (decision === 'deny') p.resolve({ behavior: 'deny', message: message?.trim() || 'The user declined this action.' })
     else p.resolve({ behavior: 'allow', updatedInput: p.input, updatedPermissions: decision === 'always' ? p.suggestions : undefined })
     this.resolveItem(rt, requestId, decision)
     this.refreshStatus(rt)
+    return true
   }
 
-  respondQuestion(id: string, requestId: string, answers: Record<string, string>): void {
+  respondQuestion(id: string, requestId: string, answers: Record<string, string>): boolean {
     const rt = this.runtimes.get(id)
     const p = rt?.pending.get(requestId)
-    if (!rt || !p || p.kind !== 'question') return
+    if (!rt || !p || p.kind !== 'question') return false
     rt.pending.delete(requestId)
     p.resolve({ behavior: 'allow', updatedInput: { ...p.input, answers } })
     this.resolveItem(rt, requestId, answers)
     this.refreshStatus(rt)
+    return true
+  }
+
+  /** True while any session is running a turn or waiting for an answer. */
+  busy(): boolean {
+    return [...this.runtimes.values()].some((rt) => rt.turnActive || rt.pending.size > 0)
   }
 
   // ---------- internals ----------

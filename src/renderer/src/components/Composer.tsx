@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { EFFORT_LABELS, type EffortLevel, type ModelOption } from '@shared/types'
 import { usePastedImages } from '../images'
-import { api, useStore } from '../store'
+import { api, machineConfig, useStore } from '../store'
 import { Attachments } from './Attachments'
 import { useDictation } from '../speech/dictation'
 import { DictationOverlay, DictationStatus, MicButton } from './Dictate'
@@ -9,8 +9,8 @@ import { DictationOverlay, DictationStatus, MicButton } from './Dictate'
 const ALL_EFFORTS: EffortLevel[] = ['low', 'medium', 'high', 'xhigh', 'max']
 
 /** The models Claude Code reports, or the CLI aliases until that list arrives. */
-function useModels(): ModelOption[] {
-  const models = useStore((s) => s.models)
+function useModels(machineId?: string): ModelOption[] {
+  const models = useStore((s) => machineConfig(s, machineId).models)
   return models.length
     ? models
     : [
@@ -21,14 +21,14 @@ function useModels(): ModelOption[] {
 }
 
 /** Effort the composer should start with for a model: the one last used with it, if the model still accepts it. */
-function rememberedEffort(model: string, models: ModelOption[]): EffortLevel | '' {
-  const saved = useStore.getState().efforts[model]
+function rememberedEffort(model: string, models: ModelOption[], machineId?: string): EffortLevel | '' {
+  const saved = machineConfig(useStore.getState(), machineId).efforts[model]
   const levels = models.find((m) => m.value === model)?.efforts ?? []
   return saved && levels.includes(saved) ? saved : ''
 }
 
-export function ModelSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const list = useModels()
+export function ModelSelect({ value, onChange, machineId }: { value: string; onChange: (v: string) => void; machineId?: string }) {
+  const list = useModels(machineId)
   const options = list.some((m) => m.value === value) ? list : [{ value, label: value, efforts: [] }, ...list]
   return (
     <select className="model" value={value} onChange={(e) => onChange(e.target.value)} title="Model">
@@ -42,8 +42,8 @@ export function ModelSelect({ value, onChange }: { value: string; onChange: (v: 
 }
 
 /** Effort picker for the selected model. Lists only the levels that model accepts; hidden for models without effort. */
-export function EffortSelect({ model, value, onChange }: { model: string; value: EffortLevel | ''; onChange: (v: EffortLevel | '') => void }) {
-  const levels = useModels().find((m) => m.value === model)?.efforts ?? []
+export function EffortSelect({ model, value, onChange, machineId }: { model: string; value: EffortLevel | ''; onChange: (v: EffortLevel | '') => void; machineId?: string }) {
+  const levels = useModels(machineId).find((m) => m.value === model)?.efforts ?? []
   if (!levels.length) return null
   return (
     <select className="model" value={value} onChange={(e) => onChange(e.target.value as EffortLevel | '')} title="Effort">
@@ -63,15 +63,19 @@ export function EffortSelect({ model, value, onChange }: { model: string; value:
  */
 export function ComposerBubble() {
   const composer = useStore((s) => s.composer)
-  const defaultModel = useStore((s) => s.defaultModel)
   const project = useStore((s) => (composer?.kind === 'project' ? s.projects[composer.targetId] : undefined))
   const skill = useStore((s) => (composer?.kind === 'skill' ? s.skills.find((k) => k.id === composer.targetId) : undefined))
   const mcp = useStore((s) => (composer?.kind === 'mcp' ? s.mcp.find((m) => m.id === composer.targetId) : undefined))
+  // Each machine keeps its own models, default model and efforts (its account can offer different models).
+  const machineId = project?.machineId ?? skill?.machineId ?? mcp?.machineId
+  const machine = useStore((s) => (machineId ? s.machines[machineId] : undefined))
+  const defaultModel = useStore((s) => machineConfig(s, machineId).defaultModel)
   const [text, setText] = useState('')
-  const models = useModels()
+  const models = useModels(machineId)
   const [model, setModel] = useState(defaultModel)
   const [effort, setEffort] = useState<EffortLevel | ''>('')
   const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const pasted = usePastedImages()
   const ref = useRef<HTMLDivElement>(null)
   const area = useRef<HTMLTextAreaElement>(null)
@@ -84,14 +88,15 @@ export function ComposerBubble() {
     setText('')
     pasted.clear()
     setBusy(false)
-    setModel(useStore.getState().defaultModel)
+    setError(null)
+    setModel(defaultModel)
     requestAnimationFrame(() => area.current?.focus())
   }, [composer?.targetId, composer?.kind])
 
   // Each model keeps its own effort: switching models (or the model list arriving) restores that model's last choice.
   useEffect(() => {
-    setEffort(rememberedEffort(model, models))
-  }, [model, models])
+    setEffort(rememberedEffort(model, models, machineId))
+  }, [model, models, machineId])
 
   useLayoutEffect(() => {
     if (!composer || !ref.current) return
@@ -114,21 +119,22 @@ export function ComposerBubble() {
 
   if (!composer) return null
   const close = () => useStore.getState().setComposer(null)
-  const target = project?.path ?? skill?.path ?? (mcp ? `MCP · ${mcp.name}` : '')
+  const target = `${machine ? `${machine.name} · ` : ''}${project?.path ?? skill?.path ?? (mcp ? `MCP · ${mcp.name}` : '')}`
   const placeholder = project ? `What should Claude do in ${project.name}?` : skill ? `How should ${skill.name} change?` : `What should change about ${mcp?.name ?? 'this server'}?`
 
   const submit = async () => {
     const prompt = text.trim()
     if (!prompt || busy || dictating) return
     setBusy(true)
-    useStore.getState().setDefaultModel(model)
+    setError(null)
+    useStore.getState().setDefaultModel(model, machineId)
     try {
       if (composer.kind === 'project') await api.startPipeline(composer.targetId, prompt, model, effort || undefined, pasted.images)
       else await api.startConfigSession(composer.targetId, prompt, model, effort || undefined, pasted.images)
       close()
     } catch (err) {
       setBusy(false)
-      console.error(err)
+      setError(cleanError(err))
     }
   }
 
@@ -169,16 +175,18 @@ export function ComposerBubble() {
       </div>
       <DictationStatus d={dictation} />
       <Attachments images={pasted.images} onRemove={pasted.remove} />
+      {error && <div className="dictation-status">{error}</div>}
       <div className="composer-foot">
         <MicButton d={dictation} />
-        <ModelSelect value={model} onChange={setModel} />
+        <ModelSelect value={model} onChange={setModel} machineId={machineId} />
         <EffortSelect
           model={model}
           value={effort}
+          machineId={machineId}
           onChange={(v) => {
             // Saved right away, so each model keeps its own effort even when you switch models before starting.
             setEffort(v)
-            useStore.getState().setModelEffort(model, v || null)
+            useStore.getState().setModelEffort(model, v || null, machineId)
           }}
         />
         <span className="spacer" />
@@ -189,4 +197,9 @@ export function ComposerBubble() {
       </div>
     </div>
   )
+}
+
+/** An IPC error without Electron's "Error invoking remote method" wrapper. */
+export function cleanError(err: unknown): string {
+  return String((err as Error)?.message ?? err).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
 }

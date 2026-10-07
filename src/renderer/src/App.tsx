@@ -2,9 +2,13 @@ import { ReactFlowProvider } from '@xyflow/react'
 import { useEffect, useState } from 'react'
 import './monaco'
 import { ComposerBubble } from './components/Composer'
+import { ControlBanner } from './components/ControlBanner'
 import { FloatingPanel } from './components/FloatingPanel'
 import { Graph } from './components/Graph'
-import { IconAutoApprove, IconMeter, IconPlus, IconTerminal } from './components/icons'
+import { IconAutoApprove, IconMeter, IconPlus, IconRemote, IconTerminal } from './components/icons'
+import { FolderBrowserPanel, PairingPanel } from './components/MachinePanels'
+import { NeedsYouButton, NeedsYouPanel, useNeedsYouShortcut } from './components/NeedsYou'
+import { RemotePanel } from './components/RemotePanel'
 import { TerminalPanel } from './components/TerminalPanel'
 import { UsagePanel } from './components/UsagePanel'
 import { LoopPanel } from './components/LoopPanel'
@@ -12,12 +16,14 @@ import { AgentPanel, SessionPanel } from './components/SessionView'
 import { ClaudeMdPanel, DiffPanel, McpPanel, SkillPanel } from './components/Viewer'
 import { api, useStore, type Panel } from './store'
 
+/** GitHub sign-in for one machine (targetId: 'local' or a machine id). */
 function LoginPanel({ panel }: { panel: Panel }) {
-  const login = useStore((s) => s.login)
-  const gh = useStore((s) => s.gh)
-  const account = gh.hosts['github.com']?.find((a) => a.active)
+  const machineId = panel.targetId === 'local' ? undefined : panel.targetId
+  const login = useStore((s) => s.logins[panel.targetId])
+  const gh = useStore((s) => (machineId ? s.machines[machineId]?.gh : s.gh))
+  const account = gh?.hosts['github.com']?.find((a) => a.active)
   return (
-    <FloatingPanel panel={panel} title="GitHub">
+    <FloatingPanel panel={panel} title="GitHub" machineId={machineId}>
       <div className="login">
         {login?.done && !login.error && account ? (
           <p>
@@ -67,6 +73,14 @@ function PanelFor({ panel }: { panel: Panel }) {
       return <UsagePanel panel={panel} />
     case 'loop':
       return <LoopPanel panel={panel} />
+    case 'remote':
+      return <RemotePanel panel={panel} />
+    case 'folders':
+      return <FolderBrowserPanel panel={panel} />
+    case 'pairing':
+      return <PairingPanel panel={panel} />
+    case 'needs':
+      return <NeedsYouPanel panel={panel} />
   }
 }
 
@@ -92,12 +106,15 @@ function AppMark() {
   )
 }
 
+/** This machine's auto-approve; each remote machine has its own toggle on its node. */
 function AutoApproveButton() {
   const on = useStore((s) => s.autoApprove)
+  const control = useStore((s) => s.control)
   return (
     <button
       className={`dock-btn${on ? ' is-on' : ''}`}
       aria-pressed={on}
+      disabled={!!control}
       title={on ? 'Auto-approve is on: permission prompts are allowed without asking. Click to turn off.' : 'Auto-approve: allow permission prompts without asking'}
       onClick={() => void api.setAutoApprove(!on)}
     >
@@ -106,11 +123,23 @@ function AutoApproveButton() {
   )
 }
 
+/** Remote machines: orchestrate others, or let one orchestrate this machine. */
+function RemoteButton() {
+  const linked = useStore((s) => Object.keys(s.machines).length > 0 || !!s.control)
+  return (
+    <button className={`dock-btn${linked ? ' is-on' : ''}`} title="Remote machines" onClick={() => useStore.getState().openPanel('remote', 'settings')}>
+      <IconRemote />
+    </button>
+  )
+}
+
 export function App() {
   const ready = useStore((s) => s.ready)
   const panels = useStore((s) => s.panels)
   const hasProjects = useStore((s) => Object.keys(s.projects).length > 0)
+  const control = useStore((s) => s.control)
   const [dragging, setDragging] = useState(false)
+  useNeedsYouShortcut()
 
   useEffect(() => {
     const off = api.onEvent((e) => useStore.getState().apply(e))
@@ -122,7 +151,7 @@ export function App() {
   // Dropping a folder anywhere adds it as a project.
   useEffect(() => {
     const over = (e: DragEvent) => {
-      if (!e.dataTransfer?.types.includes('Files')) return
+      if (!e.dataTransfer?.types.includes('Files') || useStore.getState().control) return
       e.preventDefault()
       setDragging(true)
     }
@@ -157,15 +186,18 @@ export function App() {
           <strong>Add a project folder</strong>, or drop one anywhere. Right-click a project to start a session.
         </div>
       )}
+      <ControlBanner />
       <div className="dock">
-        <button className="dock-btn" title="Add a project folder" onClick={() => void api.addProject()}>
+        <button className="dock-btn" title="Add a project folder" disabled={!!control} onClick={() => void api.addProject()}>
           <IconPlus />
         </button>
-        <button className="dock-btn" title="Terminal in your home folder" onClick={() => useStore.getState().openTerminal(null)}>
+        <button className="dock-btn" title="Terminal in your home folder" disabled={!!control} onClick={() => useStore.getState().openTerminal(null)}>
           <IconTerminal size={16} />
         </button>
         <UsageButton />
         <AutoApproveButton />
+        <RemoteButton />
+        <NeedsYouButton />
       </div>
       {panels.map((p) => (
         <PanelFor key={p.id} panel={p} />

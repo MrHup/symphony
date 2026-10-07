@@ -13,6 +13,8 @@ export interface Project {
   path: string
   name: string
   position: Point
+  /** The remote machine that owns it; unset means this machine. */
+  machineId?: string
 }
 
 /** task: a normal session. optimize: the /optimize-prompt step of the pipeline. config: edits a skill or MCP server. loop: one run of a loop step. */
@@ -47,6 +49,7 @@ export interface SessionInfo {
   loopStep?: number
   /** Hidden from the graph (an earlier run of a loop step); still listed in the loop's history. */
   archived?: boolean
+  machineId?: string
 }
 
 export interface AgentInfo {
@@ -120,6 +123,7 @@ export interface SkillInfo {
   scope: 'user' | 'project' | 'plugin' | 'synced'
   /** Set for project-scope skills. */
   projectId?: string
+  machineId?: string
 }
 
 export type McpStatus = 'connected' | 'failed' | 'needs-auth' | 'pending' | 'disabled'
@@ -135,6 +139,7 @@ export interface McpInfo {
   /** Config with secret values replaced. */
   config?: unknown
   projectId?: string
+  machineId?: string
 }
 
 export interface GitFileStat {
@@ -259,6 +264,7 @@ export interface LoopInfo {
   pausedReason?: string
   createdAt: number
   position?: Point
+  machineId?: string
 }
 
 /** What the loop editor sends: the definition without run state. */
@@ -311,6 +317,107 @@ export interface AppSnapshot {
   usage: UsageInfo | null
   loops: LoopInfo[]
   autoApprove: boolean
+  /** Remote machines this orchestrator knows (paired or asking to pair). Empty elsewhere. */
+  machines: MachineState[]
+  /** Position of this machine's own node, shown once remote machines exist. */
+  machinePosition: Point
+  /** Set while another Symphony controls this one: the window is read-only. */
+  control: ControlState | null
+}
+
+// ---------- remote machines ----------
+
+/**
+ * online: linked and in sync. reconnecting: linked, resyncing. offline: the link went silent.
+ * asleep / quit: the machine said so before it went. pairing: asks to pair, waiting for you.
+ */
+export type MachineStatus = 'online' | 'reconnecting' | 'offline' | 'asleep' | 'quit' | 'pairing'
+
+export interface MachineHealth {
+  /** Battery percentage, or null when unknown or there is no battery. */
+  battery: number | null
+  charging: boolean
+  lowPower: boolean
+}
+
+/** A remote machine as the orchestrator shows it. Its id is its certificate fingerprint. */
+export interface MachineState {
+  id: string
+  name: string
+  platform: string
+  appVersion: string
+  status: MachineStatus
+  /** When the current status began. */
+  since: number
+  /** Runs a different Symphony version (or protocol) than this one. */
+  outdated?: boolean
+  health?: MachineHealth
+  position: Point
+  hubPosition: Point
+  gh: GhAccounts
+  models: ModelOption[]
+  defaultModel: string
+  efforts: Record<string, EffortLevel>
+  autoApprove: boolean
+  /** The machine allows remote terminals. */
+  terminals: boolean
+  /** While pairing: the 6-digit code to compare. */
+  pairCode?: string
+}
+
+/** On a remote machine: who controls it. grace: the link dropped, read-only until graceEndsAt. */
+export interface ControlState {
+  by: string
+  mode: 'connected' | 'grace'
+  graceEndsAt?: number
+}
+
+export type LinkState = 'off' | 'unpaired' | 'pairing' | 'connecting' | 'connected' | 'grace' | 'retrying'
+
+export interface DiscoveredOrchestrator {
+  id: string
+  name: string
+  host: string
+  port: number
+}
+
+/** Everything the remote-orchestration panel shows, for both roles. */
+export interface RemoteStatus {
+  machineName: string
+  /** This machine's certificate fingerprint; null until remote orchestration is first used. */
+  machineId: string | null
+  orchestrator: {
+    enabled: boolean
+    port: number
+    addresses: string[]
+    error?: string
+    machines: { id: string; name: string; platform: string; status: MachineStatus; lastSeen: number }[]
+    pairing: { id: string; name: string; code: string; accepted: boolean }[]
+  }
+  remote: {
+    enabled: boolean
+    state: LinkState
+    pc: DiscoveredOrchestrator | null
+    discovered: DiscoveredOrchestrator[]
+    pairing: { name: string; code: string; accepted: boolean; peerAccepted: boolean } | null
+    error?: string
+    graceSeconds: number
+    sharedFolders: string[]
+    terminals: boolean
+  }
+}
+
+export interface AuditEntry {
+  at: number
+  action: string
+  detail?: string
+}
+
+export interface FolderListing {
+  /** Null for the list of shared folders itself. */
+  path: string | null
+  parent: string | null
+  entries: { name: string; path: string; git: boolean }[]
 }
 
 export type ApprovalDecision = 'allow' | 'always' | 'deny'
@@ -326,9 +433,10 @@ export type MainEvent =
   | { type: 'agentRemoved'; id: string }
   | { type: 'transcript'; sessionId: string; item: TranscriptItem }
   | { type: 'git'; projectId: string; stats: GitStats }
-  | { type: 'config'; skills: SkillInfo[]; mcp: McpInfo[] }
+  /** Replaces the skills and MCP servers of one machine (this one when machineId is unset). */
+  | { type: 'config'; skills: SkillInfo[]; mcp: McpInfo[]; machineId?: string }
   | { type: 'gh'; gh: GhAccounts }
-  | { type: 'login'; prompt: LoginPrompt }
+  | { type: 'login'; prompt: LoginPrompt; machineId?: string }
   | { type: 'models'; models: ModelOption[] }
   | { type: 'focus'; sessionId: string }
   | { type: 'usage'; usage: UsageInfo }
@@ -337,5 +445,9 @@ export type MainEvent =
   | { type: 'autoApprove'; on: boolean }
   | { type: 'term'; id: string; data: string }
   | { type: 'termExit'; id: string; code: number }
+  | { type: 'machine'; machine: MachineState }
+  | { type: 'machineRemoved'; id: string }
+  | { type: 'control'; control: ControlState | null }
+  | { type: 'remote'; status: RemoteStatus }
 
 export const USER_HUB_ID = 'hub:user'

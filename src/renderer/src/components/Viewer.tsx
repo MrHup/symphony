@@ -2,7 +2,8 @@ import { DiffEditor, Editor } from '@monaco-editor/react'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { GitFileDiff, GitFileStat, GitStats } from '@shared/types'
 import { editorFont, languageFor } from '../monaco'
-import { api, useStore, type Panel } from '../store'
+import { api, useLock, useStore, type Panel } from '../store'
+import { cleanError } from './Composer'
 import { FloatingPanel } from './FloatingPanel'
 import { Glyph } from './Glyph'
 import { IconRefresh } from './icons'
@@ -158,7 +159,7 @@ export function DiffPanel({ panel }: { panel: Panel }) {
   const [sideBySide, setSideBySide] = useState(true)
 
   useEffect(() => {
-    void api.gitStats(panel.targetId)
+    void api.gitStats(panel.targetId).catch(() => undefined)
   }, [panel.targetId])
 
   const files = stats?.files ?? []
@@ -168,7 +169,8 @@ export function DiffPanel({ panel }: { panel: Panel }) {
   const load = useCallback(
     async (file: GitFileStat | undefined) => {
       if (!file) return setDiff(null)
-      setDiff(await api.gitFileDiff(panel.targetId, file))
+      // An offline machine cannot send file contents; the list still shows its last known changes.
+      setDiff(await api.gitFileDiff(panel.targetId, file).catch(() => null))
     },
     [panel.targetId]
   )
@@ -189,10 +191,11 @@ export function DiffPanel({ panel }: { panel: Panel }) {
   return (
     <FloatingPanel
       panel={panel}
+      machineId={project.machineId}
       title={`${project.name} · changes`}
       meta={stats?.isRepo === false ? 'not a git repository' : `+${nf.format(stats?.added ?? 0)} −${nf.format(stats?.removed ?? 0)} · ${files.length} ${files.length === 1 ? 'file' : 'files'} · vs HEAD`}
       actions={
-        <button className="icon-btn" title="Refresh" onClick={() => void api.gitStats(panel.targetId)}>
+        <button className="icon-btn" title="Refresh" onClick={() => void api.gitStats(panel.targetId).catch(() => undefined)}>
           <IconRefresh />
         </button>
       }
@@ -238,7 +241,7 @@ export function SkillPanel({ panel }: { panel: Panel }) {
   if (!skill) return null
   const body = content?.replace(/^---[\s\S]*?\n---\r?\n?/, '') ?? ''
   return (
-    <FloatingPanel panel={panel} title={skill.name} meta={`${skill.scope} skill`}>
+    <FloatingPanel panel={panel} machineId={skill.machineId} title={skill.name} meta={`${skill.scope} skill`}>
       <Viewer
         bar={
           <>
@@ -267,12 +270,14 @@ export function SkillPanel({ panel }: { panel: Panel }) {
 
 export function McpPanel({ panel }: { panel: Panel }) {
   const mcp = useStore((s) => s.mcp.find((m) => m.id === panel.targetId))
+  const lock = useLock(mcp?.machineId)
   if (!mcp) return null
   const statusOf = { connected: 'idle', pending: 'working', 'needs-auth': 'input', failed: 'idle', disabled: 'finished' } as const
   const details = JSON.stringify({ status: mcp.status, scope: mcp.scope, source: mcp.source, error: mcp.error, tools: mcp.tools, config: mcp.config }, null, 2)
   return (
     <FloatingPanel
       panel={panel}
+      machineId={mcp.machineId}
       title={
         <span style={{ display: 'inline-flex', gap: 10, alignItems: 'center' }}>
           <Glyph status={statusOf[mcp.status]} size={9} variant={mcp.status === 'failed' ? 'failed' : 'default'} />
@@ -281,7 +286,7 @@ export function McpPanel({ panel }: { panel: Panel }) {
       }
       meta={`${mcp.status}${mcp.scope ? ` · ${mcp.scope}` : ''}`}
       actions={
-        <button className="icon-btn" title="Check again" onClick={() => void api.refreshConfig()}>
+        <button className="icon-btn" title="Check again" disabled={!!lock} onClick={() => void api.refreshConfig(mcp.machineId ?? 'local')}>
           <IconRefresh />
         </button>
       }
@@ -295,31 +300,43 @@ export function McpPanel({ panel }: { panel: Panel }) {
 
 export function ClaudeMdPanel({ panel }: { panel: Panel }) {
   const project = useStore((s) => s.projects[panel.targetId])
+  const lock = useLock(project?.machineId)
   const [file, setFile] = useState<{ path: string; content: string; exists: boolean } | null>(null)
   const [draft, setDraft] = useState('')
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   useEffect(() => {
-    void api.readClaudeMd(panel.targetId).then((f) => {
-      setFile(f)
-      setDraft(f.content)
-    })
+    api
+      .readClaudeMd(panel.targetId)
+      .then((f) => {
+        setFile(f)
+        setDraft(f.content)
+      })
+      .catch((err) => setError(cleanError(err)))
   }, [panel.targetId])
   const dirty = !!file && draft !== file.content
   const save = useCallback(async () => {
-    if (!file) return
+    if (!file || lock) return
     setSaving(true)
-    const path = await api.writeClaudeMd(panel.targetId, draft)
-    setFile({ path, content: draft, exists: true })
+    setError(null)
+    try {
+      const path = await api.writeClaudeMd(panel.targetId, draft)
+      setFile({ path, content: draft, exists: true })
+    } catch (err) {
+      // The draft stays in the editor, so nothing typed is lost.
+      setError(cleanError(err))
+    }
     setSaving(false)
-  }, [file, draft, panel.targetId])
+  }, [file, draft, panel.targetId, lock])
   if (!project) return null
   return (
     <FloatingPanel
       panel={panel}
+      machineId={project.machineId}
       title={`${project.name} · CLAUDE.md`}
-      meta={file && !file.exists ? 'new file' : undefined}
+      meta={error ?? (file && !file.exists ? 'new file' : undefined)}
       actions={
-        <button className="btn primary" disabled={!dirty || saving} onClick={() => void save()} title={`Save (${window.symphony.platform === 'darwin' ? '⌘' : 'Ctrl'}+S)`}>
+        <button className="btn primary" disabled={!dirty || saving || !!lock} onClick={() => void save()} title={lock ?? `Save (${window.symphony.platform === 'darwin' ? '⌘' : 'Ctrl'}+S)`}>
           {dirty && <span className="dirty-dot" style={{ background: 'var(--bg)' }} />}
           Save
         </button>
@@ -331,7 +348,8 @@ export function ClaudeMdPanel({ panel }: { panel: Panel }) {
             {file?.path}
           </span>
         }
-        doc={file ? { content: draft, language: 'markdown', readOnly: false, onChange: setDraft, onSave: () => void save() } : undefined}
+        doc={file ? { content: draft, language: 'markdown', readOnly: !!lock, onChange: setDraft, onSave: () => void save() } : undefined}
+        empty={error ?? undefined}
       />
     </FloatingPanel>
   )

@@ -77,6 +77,31 @@ export const IconLoop = ({ size = 14 }: { size?: number }) => (
   </svg>
 )
 
+/** Two screens joined by a line: remote orchestration. */
+export const IconRemote = ({ size = 16 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" {...base}>
+    <rect x="1.75" y="2.75" width="5.5" height="4" rx="0.75" />
+    <rect x="8.75" y="9.25" width="5.5" height="4" rx="0.75" />
+    <path d="M4.5 6.75v4.5h4.25" />
+  </svg>
+)
+
+/** A folder: browse a machine's shared folders. */
+export const IconFolder = ({ size = 14 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 14 14" {...base}>
+    <path d="M1.75 3.75h3.5l1.25 1.25h5.75v5.75H1.75z" />
+  </svg>
+)
+
+/** A battery filled to `level` (0–1). */
+export const IconBattery = ({ level, size = 14 }: { level: number; size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 14 14" {...base}>
+    <rect x="1.25" y="4.25" width="10" height="5.5" rx="1" />
+    <path d="M12.75 6v2" />
+    <rect x="2.5" y="5.5" width={Math.max(0.5, 7.5 * Math.min(1, Math.max(0, level)))} height="3" rx="0.4" fill="currentColor" stroke="none" />
+  </svg>
+)
+
 /** Two check marks: approve automatically. */
 export const IconAutoApprove = ({ size = 16 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 16 16" {...base}>

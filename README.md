@@ -31,6 +31,7 @@ Other scripts:
 | `npm run build` | Build main, preload and renderer into `out/` |
 | `npm run typecheck` | Type-check the main process and the UI |
 | `npm run drive` | Launch the built app under Playwright and accept test commands over HTTP (see `scripts/drive.mjs`) |
+| `npm test` | Protocol, control and security tests of remote orchestration (`test/`), under plain Node |
 
 `npm run dev` and `npm start` go through `scripts/run.mjs`, which clears `ELECTRON_RUN_AS_NODE`.
 VS Code and other Electron-based tools export that variable to the processes they spawn, and it
@@ -39,6 +40,9 @@ makes Electron start as plain Node.
 The app keeps its graph and transcripts in Electron's userData folder
 (`%APPDATA%\symphony` on Windows, `~/Library/Application Support/symphony` on macOS). Set
 `SYMPHONY_USER_DATA` to use a different folder, for example for test runs.
+`SYMPHONY_MACHINE_NAME` overrides the machine name remote orchestration shows, and
+`SYMPHONY_REMOTE_LOOPBACK=1` keeps remote orchestration on 127.0.0.1 without mDNS, so two instances
+on one machine can be tested without touching the network or the firewall.
 
 ## Using it
 
@@ -128,6 +132,58 @@ changes, then you approve.
   else is shown in its folder, because paths come from agent output and opening a script or
   program would run it.
 
+## Remote machines
+
+Symphony on one machine (the **orchestrator**, e.g. a Windows PC) can drive Symphony on other
+machines on the same local network (**remote machines**, e.g. MacBooks). Sessions, project files,
+git and each machine's own Claude Code login stay on that machine; the orchestrator only prompts,
+watches, approves and reviews. Nothing besides the Symphony repo and its npm packages is installed
+anywhere: no SSH, no system service, no overlay network.
+
+Set up, once per remote machine:
+
+1. On the orchestrator: the remote-machines button in the dock, then **Orchestrate other machines**.
+   It listens on its local-network addresses (port 47821) and advertises itself over mDNS. Windows
+   asks once to allow Symphony through its firewall.
+2. On the remote machine: `npm install`, `npm start`, and sign in to Claude Code (**Sign in to
+   Claude** in the same panel runs the Claude Code binary that ships with Symphony, if there is no
+   `claude` command). Turn on **Let a Symphony on this network orchestrate this machine**, pick the
+   orchestrator from the list (or enter its address), and pick the shared folders.
+3. Both screens show a 6-digit code. Accept on both when they match. From then on the two accept
+   only each other (pinned certificates, mutual TLS); the remote machine dials out, so no port is
+   opened on it.
+
+On the orchestrator each remote machine is its own root on the graph, with its `~/.claude` hub and
+projects under it; remote projects carry the machine's name. Everything works as for local
+projects: the prompt pipeline with live thinking and tool calls, approvals and questions, replies,
+loops (including human steps), the diff viewer, CLAUDE.md, skills, MCP, artifacts (files are
+fetched and opened here; `localhost` links cannot), and terminals if the remote machine allows
+them. The machine node carries that machine's auto-approve toggle, the folder browser for adding a
+project from its shared folders, a terminal button, and its battery when it runs on battery. The
+dock's auto-approve and the usage meter are this machine's only; remote machines stop polling
+usage while linked. A repo cloned on two machines is two separate projects.
+
+While linked, the remote machine's own window is read-only (enforced by its core, not only its
+UI), with a banner naming the orchestrator and a **Disconnect** button that always works. If the
+link drops without a goodbye, it stays read-only for a grace period (2 minutes by default,
+settable, 0 to turn it off) while it redials. If the same approval is answered on both sides, the
+first answer wins and the other side is told so.
+
+Offline machines are unmistakable but never orange: the machine node turns into a broken ring
+labelled "offline", "asleep" or "quit" with the time, everything under it fades to 40% with dashed
+edges, and open panels say they show the last known state, with every action disabled. On return
+the orchestrator takes a fresh snapshot and fetches open transcripts again; requests interrupted by
+a drop are resent with the same id and run once. What the orchestrator knows about each machine is
+saved, so after a restart every paired machine appears at once, offline, with its last state.
+
+**Needs you**: the count at the end of the dock lists every waiting approval, question, human loop
+step and pairing request on every machine, oldest first. Ctrl/⌘+J opens the oldest; pressing it
+again moves to the next.
+
+Each remote machine logs what the orchestrator did there (sessions started, approvals answered,
+auto-approve toggled, CLAUDE.md saved, terminals opened); **Show the audit log** in its panel.
+Either side can revoke the other. The design is in `plan.md`.
+
 ## Auto-approve and dictation
 
 **Auto-approve** answers Claude Code's permission prompts with "allow" for every session and loop
@@ -200,7 +256,10 @@ with your own environment, so a `claude` you run there yourself is not covered.
 | `src/main/github.ts` | gh accounts, per-session identity, in-app device login |
 | `src/main/terminals.ts` | One pseudo-terminal per terminal panel |
 | `src/main/loops.ts` | Loops: running steps, the `loop_route` tool, handoffs, human decisions, pauses |
-| `src/main/index.ts` | Window, IPC handlers, background refresh loops |
+| `src/main/core.ts` | `SymphonyCore`: the services and every request, without the window; any number of event listeners; read-only enforcement for a controlled machine |
+| `src/main/index.ts` | Window and IPC; every request goes through remote orchestration |
+| `src/main/remote/` | Remote orchestration: `orchestrator.ts` (listener, pairing, routing, merging), `link.ts` (remote side: dialing out, serving the core, read-only control, shared folders, audit), `mirror.ts` (a remote machine's state as the orchestrator sees it), `server.ts` (request ids, sequence numbers), `wire.ts` (frames, ping, silence), `identity.ts` (certificate, pairing code), `mdns.ts`, `settings.ts` |
+| `src/shared/remote.ts` | The link protocol: frames, timings, which request goes where, ID prefixes |
 | `src/preload/index.ts` | The `window.symphony` bridge (context-isolated, sandboxed) |
 | `src/shared/` | Types and the IPC contract shared by both sides |
 | `src/renderer/src/components/Graph.tsx` | Layout and interactions of the graph |
@@ -213,6 +272,8 @@ with your own environment, so a `claude` you run there yourself is not covered.
 | `src/renderer/src/speech/` | Dictation: microphone capture, the local Whisper worker, live preview |
 | `src/main/dictation.ts` | Clean-up of dictated text with Claude Haiku |
 | `scripts/drive.mjs` | Test driver: Playwright `_electron` behind a small HTTP command server |
+| `src/renderer/src/components/RemotePanel.tsx`, `MachinePanels.tsx`, `NeedsYou.tsx`, `ControlBanner.tsx` | Remote-machines panel, pairing and folder browser, the Needs you list, the read-only banner |
+| `scripts/test.mjs`, `test/` | Remote-orchestration tests: an orchestrator and a remote machine in one Node process over TLS on 127.0.0.1 |
 
 ## What was verified on Windows
 
@@ -262,7 +323,24 @@ on Windows 11, driving the built app:
   Claude Code); with an `apiKeyHelper` in a project's settings, the session was refused before
   sending anything.
 
+- Remote orchestration, with two instances on this PC (separate `SYMPHONY_USER_DATA`,
+  `SYMPHONY_REMOTE_LOOPBACK=1`): pairing by code from both windows; the remote machine as its own
+  root with hub and project; adding its project through the folder browser; a Haiku pipeline on the
+  remote project with live thinking, the approval answered from the orchestrator while the remote
+  window showed it read-only; the diff viewer; CLAUDE.md read and saved; the per-machine
+  auto-approve toggle; a loop's human step decided from the orchestrator; the audit log; quitting
+  the remote instance (broken ring, "quit", faded dashed subtree, panel banner, actions disabled);
+  restarting it (relinked and resynced in 2 s, read-only again); restarting the orchestrator
+  (machine shown offline with its last state at once, then relinked). `npm test` covers the rest
+  of the plan's protocol, control and security tests (30 tests).
+
 Not verified on this machine:
+
+- **Remote orchestration on a real network**: mDNS discovery, a remote machine on another computer,
+  Windows Firewall, sleep and wake, and Wi-Fi changes (the two-instance test runs on loopback).
+  This is phase 4 of `plan.md`.
+- **Remote terminals in the window.** Routing, the switch and the ID handling are covered by
+  `npm test`; a remote terminal panel was not opened in the app.
 
 - **The GitHub identity shown when an account is signed in.** gh had no account here, so sessions
   showed "no GitHub account". The token injection and the parsing of gh's login output were tested
@@ -291,6 +369,11 @@ All of this lives in `src/main/platform.ts` unless noted.
 - Dictation: `ensureMicAccess()` triggers the macOS microphone prompt (a packaged app also needs
   `NSMicrophoneUsageDescription` in its Info.plist); WebGPU is used on Apple GPUs, with the CPU
   fallback otherwise.
+- Remote orchestration (phase 4 of `plan.md`): the device key in the Keychain through `safeStorage`
+  (`sealSecret()`), `scutil --get ComputerName` for the machine name, `pmset` for the battery
+  (`readHealth()`), sleep and wake through `powerMonitor` (`onPower()`), `powerSaveBlocker`
+  (`keepAwake()`), mDNS discovery of the orchestrator, and **Sign in to Claude** running the
+  bundled binary with `/login`.
 - Terminals: `npm install` pulls the `@lydell/node-pty-darwin-*` binary; `terminalShell()` opens `pwsh`
   when PowerShell is installed (for example `brew install powershell`) and otherwise the login shell
   (zsh), and the panel title then says so; ⌘+C copies a selection and ⌘+V pastes.

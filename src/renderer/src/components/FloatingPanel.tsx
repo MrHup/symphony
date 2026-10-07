@@ -1,10 +1,15 @@
 import { useRef, type ReactNode } from 'react'
-import { useStore, type Panel } from '../store'
+import { clock, machineUp, useStore, type Panel } from '../store'
 import { IconClose } from './icons'
 
-/** A draggable, resizable window floating over the graph. Drag by the header, resize from the corner. */
-export function FloatingPanel({ panel, title, meta, actions, children }: { panel: Panel; title: ReactNode; meta?: ReactNode; actions?: ReactNode; children: ReactNode }) {
+/**
+ * A draggable, resizable window floating over the graph. Drag by the header, resize from the corner.
+ * With a machineId, the header names that machine, and while it is offline a one-line banner says
+ * the panel shows its last known state.
+ */
+export function FloatingPanel({ panel, title, meta, actions, children, machineId }: { panel: Panel; title: ReactNode; meta?: ReactNode; actions?: ReactNode; children: ReactNode; machineId?: string }) {
   const { updatePanel, closePanel, raisePanel } = useStore.getState()
+  const machine = useStore((s) => (machineId ? s.machines[machineId] : undefined))
   const start = useRef<{ mx: number; my: number; x: number; y: number; w: number; h: number } | null>(null)
 
   const track = (mode: 'move' | 'resize') => (e: React.PointerEvent) => {
@@ -49,6 +54,7 @@ export function FloatingPanel({ panel, title, meta, actions, children }: { panel
     >
       <header className="panel-head" onPointerDown={track('move')}>
         <div className="panel-title">
+          {machine && <span className="machine-tag">{machine.name}</span>}
           <span className="main">{title}</span>
           {meta && <span className="meta">{meta}</span>}
         </div>
@@ -57,6 +63,11 @@ export function FloatingPanel({ panel, title, meta, actions, children }: { panel
           <IconClose />
         </button>
       </header>
+      {machine && !machineUp(machine) && (
+        <div className="panel-banner">
+          {machine.name} is {machine.status === 'asleep' ? 'asleep' : machine.status === 'quit' ? 'not running Symphony' : 'offline'}. Showing its last known state from {clock(machine.since)}.
+        </div>
+      )}
       <div className="panel-body">{children}</div>
       <div className="panel-resize" onPointerDown={track('resize')} />
     </section>

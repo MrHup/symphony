@@ -9,10 +9,10 @@ export class TerminalManager {
 
   constructor(private emit: (e: MainEvent) => void) {}
 
-  /** Starts the shell and returns its display name. */
-  start(id: string, cwd: string, cols: number, rows: number): string {
-    const shell = terminalShell()
-    const name = shellName(shell.file)
+  /** Starts the shell (or `command`) and returns its display name. */
+  start(id: string, cwd: string, cols: number, rows: number, command?: { file: string; args: string[]; name: string }): string {
+    const shell = command ?? terminalShell()
+    const name = command?.name ?? shellName(shell.file)
     if (this.terms.has(id)) return name
     const env = { ...process.env, TERM_PROGRAM: 'Symphony' } as Record<string, string>
     // Never leak Electron's "run as Node" switch into the user's shell.
@@ -37,6 +37,15 @@ export class TerminalManager {
     } catch {
       // The process may have exited between the resize and now.
     }
+  }
+
+  /** Stop reading a terminal's output for a while (the link's send buffer is full). */
+  pause(id: string): void {
+    this.terms.get(id)?.pause()
+  }
+
+  resume(id: string): void {
+    this.terms.get(id)?.resume()
   }
 
   kill(id: string): void {

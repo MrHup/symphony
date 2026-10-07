@@ -2,6 +2,7 @@ import '@xterm/xterm/css/xterm.css'
 import { FitAddon } from '@xterm/addon-fit'
 import { Terminal, type ITheme } from '@xterm/xterm'
 import { useEffect, useRef, useState } from 'react'
+import { splitMachine, withMachine } from '@shared/remote'
 import { api, terminalBus, useStore, type Panel } from '../store'
 import { FloatingPanel } from './FloatingPanel'
 
@@ -33,15 +34,25 @@ const theme: ITheme = {
 
 const isMac = window.symphony.platform === 'darwin'
 
+/**
+ * targetId is `<projectId>#n`, `home#n`, `@<machineId>/home#n` (a remote machine's home folder), or
+ * `claude-login#n` (the bundled Claude Code binary running /login).
+ */
 export function TerminalPanel({ panel }: { panel: Panel }) {
-  const where = panel.targetId.split('#')[0]
-  const projectId = where === 'home' ? null : where
+  const raw = panel.targetId.split('#')[0]
+  const home = splitMachine(raw)
+  const where = home?.id ?? raw
+  const login = where === 'claude-login'
+  const projectId = where === 'home' || login ? null : where
   const project = useStore((s) => (projectId ? s.projects[projectId] : undefined))
+  const machineId = home?.machineId ?? project?.machineId
+  const machine = useStore((s) => (machineId ? s.machines[machineId] : undefined))
   const host = useRef<HTMLDivElement>(null)
   const [shell, setShell] = useState('Terminal')
 
   useEffect(() => {
-    const id = panel.id
+    // A remote machine's terminal carries its prefix, so its output comes back to this panel.
+    const id = machineId ? withMachine(machineId, panel.id) : panel.id
     const term = new Terminal({
       fontFamily: "'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Menlo, monospace",
       fontSize: 12.5,
@@ -85,8 +96,12 @@ export function TerminalPanel({ panel }: { panel: Panel }) {
       term.open(host.current)
       fit.fit()
       observer.observe(host.current)
-      setShell(await api.termStart(id, projectId, term.cols, term.rows))
-      term.focus()
+      try {
+        setShell(await (login ? api.claudeLogin(id, term.cols, term.rows) : api.termStart(id, projectId, term.cols, term.rows, home?.machineId)))
+        term.focus()
+      } catch (err) {
+        term.write(`\x1b[90m${String((err as Error).message).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')}\x1b[0m\r\n`)
+      }
     })
 
     return () => {
@@ -94,13 +109,13 @@ export function TerminalPanel({ panel }: { panel: Panel }) {
       observer.disconnect()
       offInput.dispose()
       offBus()
-      void api.termKill(id)
+      void api.termKill(id).catch(() => undefined)
       term.dispose()
     }
-  }, [panel.id, projectId])
+  }, [panel.id, projectId, machineId, login, home?.machineId])
 
   return (
-    <FloatingPanel panel={panel} title={`${shell} · ${project?.name ?? '~'}`} meta={project?.path}>
+    <FloatingPanel panel={panel} machineId={machineId} title={login ? shell : `${shell} · ${project?.name ?? (machine ? `~ on ${machine.name}` : '~')}`} meta={project?.path}>
       <div className="terminal-host" ref={host} onMouseDown={() => host.current?.querySelector('textarea')?.focus()} />
     </FloatingPanel>
   )

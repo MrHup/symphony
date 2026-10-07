@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { EffortLevel, LoopArtifact, LoopDraft, LoopHandoff, LoopInfo, LoopStep, LoopStepKind } from '@shared/types'
 import { readImage } from '../images'
-import { api, loopStatus, useStore, type Panel } from '../store'
+import { api, loopStatus, machineConfig, useLock, useStore, type Panel } from '../store'
 import { Attachments } from './Attachments'
 import { useDictation } from '../speech/dictation'
 import { DictationOverlay, DictationStatus, MicButton } from './Dictate'
-import { EffortSelect, ModelSelect } from './Composer'
+import { cleanError, EffortSelect, ModelSelect } from './Composer'
 import { FloatingPanel } from './FloatingPanel'
 import { Glyph } from './Glyph'
 import { IconClose, IconTrash } from './icons'
@@ -24,15 +24,15 @@ const STATE_LABEL: Record<LoopInfo['state'], string> = {
 }
 const ACTIVE: LoopInfo['state'][] = ['optimizing', 'running', 'waiting', 'paused']
 
-function newStep(kind: LoopStepKind): LoopStep {
-  const s = useStore.getState()
-  const model = s.defaultModel
+/** A new step, using the default model and effort of the machine that owns the project. */
+function newStep(kind: LoopStepKind, machineId?: string): LoopStep {
+  const { defaultModel: model, efforts } = machineConfig(useStore.getState(), machineId)
   return {
     id: crypto.randomUUID(),
     kind,
     title: '',
     prompt: '',
-    ...(kind === 'agent' ? { model, effort: s.efforts[model], images: [] } : {})
+    ...(kind === 'agent' ? { model, effort: efforts[model], images: [] } : {})
   }
 }
 
@@ -42,6 +42,7 @@ export function LoopPanel({ panel }: { panel: Panel }) {
   const sessions = useStore((s) => s.sessions)
   const projectId = isNew ? panel.targetId.slice(4).split('#')[0] : loop?.projectId
   const project = useStore((s) => (projectId ? s.projects[projectId] : undefined))
+  const lock = useLock(project?.machineId)
   if (!project || (!isNew && !loop)) return null
   const status = loop ? loopStatus(loop, sessions) : 'idle'
   const active = !!loop && ACTIVE.includes(loop.state)
@@ -49,6 +50,7 @@ export function LoopPanel({ panel }: { panel: Panel }) {
   return (
     <FloatingPanel
       panel={panel}
+      machineId={project.machineId}
       title={
         <span style={{ display: 'inline-flex', gap: 10, alignItems: 'center' }}>
           <Glyph status={status} size={12} variant="loop" />
@@ -59,27 +61,31 @@ export function LoopPanel({ panel }: { panel: Panel }) {
       actions={
         loop &&
         (active ? (
-          <button className="btn ghost" onClick={() => void api.loopStop(loop.id)}>
+          <button className="btn ghost" disabled={!!lock} onClick={() => void api.loopStop(loop.id)}>
             Stop loop
           </button>
         ) : (
-          <button className="icon-btn" title="Delete loop" onClick={() => void api.loopDelete(loop.id)}>
+          <button className="icon-btn" title="Delete loop" disabled={!!lock} onClick={() => void api.loopDelete(loop.id)}>
             <IconTrash />
           </button>
         ))
       }
     >
       <div className="loop-body">
-        {active && loop ? (
-          <LoopRun loop={loop} />
-        ) : (
-          <LoopEditor
-            key={loop?.id ?? panel.targetId}
-            projectId={project.id}
-            loop={loop}
-            onCreated={(created) => useStore.getState().updatePanel(panel.id, { targetId: created.id })}
-          />
-        )}
+        {/* Read-only window or offline machine: the loop can be read but not edited or routed. */}
+        <fieldset className="lock" disabled={!!lock} title={lock ?? undefined}>
+          {active && loop ? (
+            <LoopRun loop={loop} />
+          ) : (
+            <LoopEditor
+              key={loop?.id ?? panel.targetId}
+              projectId={project.id}
+              machineId={project.machineId}
+              loop={loop}
+              onCreated={(created) => useStore.getState().updatePanel(panel.id, { targetId: created.id })}
+            />
+          )}
+        </fieldset>
         {loop && loop.history.length > 0 && <History loop={loop} />}
       </div>
     </FloatingPanel>
@@ -88,9 +94,9 @@ export function LoopPanel({ panel }: { panel: Panel }) {
 
 // ---------- editor ----------
 
-function LoopEditor({ projectId, loop, onCreated }: { projectId: string; loop?: LoopInfo; onCreated: (l: LoopInfo) => void }) {
+function LoopEditor({ projectId, machineId, loop, onCreated }: { projectId: string; machineId?: string; loop?: LoopInfo; onCreated: (l: LoopInfo) => void }) {
   const [name, setName] = useState(loop?.name ?? '')
-  const [steps, setSteps] = useState<LoopStep[]>(() => (loop ? structuredClone(loop.steps) : [newStep('agent'), newStep('human')]))
+  const [steps, setSteps] = useState<LoopStep[]>(() => (loop ? structuredClone(loop.steps) : [newStep('agent', machineId), newStep('human', machineId)]))
   const [maxRuns, setMaxRuns] = useState(loop?.maxRuns ?? DEFAULT_MAX_RUNS)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -115,7 +121,7 @@ function LoopEditor({ projectId, loop, onCreated }: { projectId: string; loop?: 
       onCreated(created)
       return created
     } catch (err) {
-      setError((err as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''))
+      setError(cleanError(err))
       return null
     }
   }
@@ -123,7 +129,7 @@ function LoopEditor({ projectId, loop, onCreated }: { projectId: string; loop?: 
   const start = async () => {
     setBusy(true)
     const saved = await save()
-    if (saved) await api.loopStart(saved.id).catch((err: Error) => setError(err.message))
+    if (saved) await api.loopStart(saved.id).catch((err: Error) => setError(cleanError(err)))
     setBusy(false)
   }
 
@@ -135,6 +141,7 @@ function LoopEditor({ projectId, loop, onCreated }: { projectId: string; loop?: 
           key={s.id}
           index={i}
           step={s}
+          machineId={machineId}
           count={steps.length}
           onChange={(p) => patch(i, p)}
           onMove={(d) => move(i, d)}
@@ -142,10 +149,10 @@ function LoopEditor({ projectId, loop, onCreated }: { projectId: string; loop?: 
         />
       ))}
       <div className="loop-add">
-        <button className="btn ghost" onClick={() => setSteps((cur) => [...cur, newStep('agent')])}>
+        <button className="btn ghost" onClick={() => setSteps((cur) => [...cur, newStep('agent', machineId)])}>
           + Agent step
         </button>
-        <button className="btn ghost" onClick={() => setSteps((cur) => [...cur, newStep('human')])}>
+        <button className="btn ghost" onClick={() => setSteps((cur) => [...cur, newStep('human', machineId)])}>
           + Human review
         </button>
         <span className="spacer" />
@@ -172,6 +179,7 @@ function LoopEditor({ projectId, loop, onCreated }: { projectId: string; loop?: 
 function StepCard({
   index,
   step,
+  machineId,
   count,
   onChange,
   onMove,
@@ -179,6 +187,7 @@ function StepCard({
 }: {
   index: number
   step: LoopStep
+  machineId?: string
   count: number
   onChange: (p: Partial<LoopStep>) => void
   onMove: (d: number) => void
@@ -202,8 +211,8 @@ function StepCard({
   }
   const setKind = (kind: LoopStepKind) => {
     if (kind === step.kind) return
-    const s = useStore.getState()
-    onChange(kind === 'agent' ? { kind, model: s.defaultModel, effort: s.efforts[s.defaultModel], images: [] } : { kind, model: undefined, effort: undefined, images: undefined })
+    const c = machineConfig(useStore.getState(), machineId)
+    onChange(kind === 'agent' ? { kind, model: c.defaultModel, effort: c.efforts[c.defaultModel], images: [] } : { kind, model: undefined, effort: undefined, images: undefined })
   }
   return (
     <div className={`step-card${human ? ' is-human' : ''}`}>
@@ -252,8 +261,12 @@ function StepCard({
         <>
           <Attachments images={step.images ?? []} onRemove={(i) => onChange({ images: (step.images ?? []).filter((_, j) => j !== i) })} />
           <div className="step-opts">
-            <ModelSelect value={step.model ?? useStore.getState().defaultModel} onChange={(m) => onChange({ model: m, effort: useStore.getState().efforts[m] })} />
-            <EffortSelect model={step.model ?? ''} value={step.effort ?? ''} onChange={(v) => onChange({ effort: (v || undefined) as EffortLevel | undefined })} />
+            <ModelSelect
+              machineId={machineId}
+              value={step.model ?? machineConfig(useStore.getState(), machineId).defaultModel}
+              onChange={(m) => onChange({ model: m, effort: machineConfig(useStore.getState(), machineId).efforts[m] })}
+            />
+            <EffortSelect machineId={machineId} model={step.model ?? ''} value={step.effort ?? ''} onChange={(v) => onChange({ effort: (v || undefined) as EffortLevel | undefined })} />
           </div>
         </>
       )}
@@ -278,7 +291,7 @@ function LoopRun({ loop }: { loop: LoopInfo }) {
 
 function StepRow({ loop, step, index }: { loop: LoopInfo; step: LoopStep; index: number }) {
   const [open, setOpen] = useState(false)
-  const model = useModelLabel(step.model ?? '')
+  const model = useModelLabel(step.model ?? '', loop.machineId)
   const current = loop.current === index
   const runs = loop.history.filter((h) => h.fromStep === index && h.by === 'agent').length + (current && loop.state === 'running' ? 1 : 0)
   return (
@@ -347,7 +360,11 @@ function Decision({ loop }: { loop: LoopInfo }) {
   const backOptions = useMemo(() => loop.steps.map((s, i) => ({ i, s })).filter(({ i }) => i < current), [loop.steps, current])
   const [backTo, setBackTo] = useState<number>(backOptions.at(-1)?.i ?? 0)
   useEffect(() => setBackTo(backOptions.at(-1)?.i ?? 0), [backOptions])
-  const decide = (decision: 'forward' | 'back') => void api.loopDecide(loop.id, { decision, step: decision === 'back' ? backTo : undefined, feedback })
+  const [error, setError] = useState<string | null>(null)
+  const decide = (decision: 'forward' | 'back') => {
+    setError(null)
+    api.loopDecide(loop.id, { decision, step: decision === 'back' ? backTo : undefined, feedback }).catch((err) => setError(cleanError(err)))
+  }
 
   return (
     <div className="t-request loop-decision">
@@ -396,6 +413,7 @@ function Decision({ loop }: { loop: LoopInfo }) {
           </>
         )}
       </div>
+      {error && <p className="loop-error">{error}</p>}
     </div>
   )
 }

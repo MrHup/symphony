@@ -1,13 +1,15 @@
 // Everything that differs between Windows and macOS lives here: config locations, PATH repair,
 // process spawning, gh lookup and the git credential wiring that makes sessions use a gh account.
-// Other modules must not branch on process.platform themselves.
-import { shell, systemPreferences } from 'electron'
+// Other modules must not branch on process.platform themselves. The Electron APIs the core needs
+// are handed to it as adapters from here too.
+import { dialog, powerMonitor, powerSaveBlocker, safeStorage, shell, systemPreferences, type BrowserWindow } from 'electron'
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { homedir } from 'node:os'
+import { homedir, hostname } from 'node:os'
 import { dirname, extname, isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import type { MachineHealth } from '@shared/types'
 
 export const isWindows = process.platform === 'win32'
 export const isMac = process.platform === 'darwin'
@@ -198,20 +200,28 @@ const VIEWABLE = new Set([
   '.md', '.txt', '.log', '.csv', '.json', '.xml', '.yml', '.yaml'
 ])
 
+export const isViewable = (path: string) => VIEWABLE.has(extname(path).toLowerCase())
+
+/** An artifact's file path, absolute or relative to the project folder; null for a link that is not a file. */
+export function artifactPath(baseDir: string, target: { path?: string; url?: string }): string | null {
+  const path = target.url && /^file:/i.test(target.url) ? fileURLToPath(target.url) : target.path
+  if (!path) return null
+  return isAbsolute(path) ? path : resolve(baseDir, path)
+}
+
 /** Open a handed-over file or link. Returns an error message, or null on success. */
 export async function openArtifact(baseDir: string, target: { path?: string; url?: string }): Promise<string | null> {
-  if (target.url) {
+  if (target.url && !/^file:/i.test(target.url)) {
     if (/^https?:\/\//i.test(target.url)) {
       await shell.openExternal(target.url)
       return null
     }
-    if (!/^file:/i.test(target.url)) return 'Only http, https and file links can be opened.'
-    target = { path: fileURLToPath(target.url) }
+    return 'Only http, https and file links can be opened.'
   }
-  if (!target.path) return 'Nothing to open.'
-  const full = isAbsolute(target.path) ? target.path : resolve(baseDir, target.path)
+  const full = artifactPath(baseDir, target)
+  if (!full) return 'Nothing to open.'
   if (!existsSync(full)) return `${full} does not exist.`
-  if (!VIEWABLE.has(extname(full).toLowerCase())) {
+  if (!isViewable(full)) {
     shell.showItemInFolder(full)
     return null
   }
@@ -224,4 +234,87 @@ export async function ensureMicAccess(): Promise<boolean> {
   if (!isMac) return true
   if (systemPreferences.getMediaAccessStatus('microphone') === 'granted') return true
   return systemPreferences.askForMediaAccess('microphone')
+}
+
+// ---------- adapters for the core ----------
+
+/** The Electron features the core uses, injected so the core itself stays plain Node. */
+export interface Adapters {
+  /** The native folder picker; null when cancelled. */
+  pickFolder(): Promise<string | null>
+  openExternal(url: string): void
+  /** Opens a local file in its default app; returns an error message or null. */
+  openPath(path: string): Promise<string | null>
+  openArtifact(baseDir: string, target: { path?: string; url?: string }): Promise<string | null>
+  micAccess(): Promise<boolean>
+}
+
+export function electronAdapters(win: () => BrowserWindow | null): Adapters {
+  return {
+    async pickFolder() {
+      const w = win()
+      const res = w ? await dialog.showOpenDialog(w, { properties: ['openDirectory'] }) : await dialog.showOpenDialog({ properties: ['openDirectory'] })
+      return res.canceled || !res.filePaths[0] ? null : res.filePaths[0]
+    },
+    openExternal: (url) => void shell.openExternal(url),
+    openPath: async (path) => (await shell.openPath(path)) || null,
+    openArtifact,
+    micAccess: ensureMicAccess
+  }
+}
+
+// ---------- remote orchestration ----------
+
+/** Encrypt a secret with the OS store (Keychain on macOS, DPAPI on Windows). Needs the app to be ready. */
+export function sealSecret(text: string): string {
+  if (!safeStorage.isEncryptionAvailable()) throw new Error('The system keychain is not available, so the device key cannot be stored.')
+  return safeStorage.encryptString(text).toString('base64')
+}
+
+export function openSecret(sealed: string): string {
+  return safeStorage.decryptString(Buffer.from(sealed, 'base64'))
+}
+
+let nameCache: string | undefined
+
+/** This machine's display name, e.g. "MacBook Pro of Ana" (SYMPHONY_MACHINE_NAME overrides it for tests). */
+export async function machineName(): Promise<string> {
+  if (nameCache) return nameCache
+  let name = process.env.SYMPHONY_MACHINE_NAME?.trim() || ''
+  if (!name && isMac) name = (await run('/usr/sbin/scutil', ['--get', 'ComputerName'], { timeoutMs: 3000 })).stdout.trim()
+  if (!name && isWindows) name = process.env.COMPUTERNAME ?? ''
+  nameCache = name || hostname().replace(/\.local$/, '')
+  return nameCache
+}
+
+/** Battery and power state. The percentage comes from `pmset` on macOS and is unknown elsewhere. */
+export async function readHealth(): Promise<MachineHealth> {
+  const onBattery = powerMonitor.isOnBatteryPower()
+  if (!isMac) return { battery: null, charging: !onBattery, lowPower: false }
+  const [batt, settings] = await Promise.all([run('/usr/bin/pmset', ['-g', 'batt'], { timeoutMs: 3000 }), run('/usr/bin/pmset', ['-g'], { timeoutMs: 3000 })])
+  const pct = batt.stdout.match(/(\d+)%/)
+  return {
+    battery: pct ? Number(pct[1]) : null,
+    charging: !onBattery,
+    lowPower: /lowpowermode\s+1/.test(settings.stdout)
+  }
+}
+
+/** Power events: about to sleep, woke up, switched between battery and mains. */
+export function onPower(handlers: { suspend(): void; resume(): void; change(): void }): void {
+  powerMonitor.on('suspend', handlers.suspend)
+  powerMonitor.on('resume', handlers.resume)
+  powerMonitor.on('on-battery', handlers.change)
+  powerMonitor.on('on-ac', handlers.change)
+}
+
+let blocker: number | null = null
+
+/** While on, idle sleep is prevented (a closed lid still sleeps the machine). */
+export function keepAwake(on: boolean): void {
+  if (on && blocker === null) blocker = powerSaveBlocker.start('prevent-app-suspension')
+  else if (!on && blocker !== null) {
+    powerSaveBlocker.stop(blocker)
+    blocker = null
+  }
 }

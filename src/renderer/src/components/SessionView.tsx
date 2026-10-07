@@ -1,6 +1,7 @@
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createContext, memo, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { EFFORT_LABELS, type AskQuestion, type SessionInfo, type TranscriptItem } from '@shared/types'
-import { api, useStore, type Panel } from '../store'
+import { api, useLock, useStore, type Panel } from '../store'
+import { cleanError } from './Composer'
 import { FloatingPanel } from './FloatingPanel'
 import { Glyph, statusLabel } from './Glyph'
 import { IconSend, IconStop, IconTrash } from './icons'
@@ -12,6 +13,9 @@ import { DictationOverlay, DictationStatus, MicButton } from './Dictate'
 import { useModelLabel } from './nodes'
 
 const EMPTY: TranscriptItem[] = []
+
+/** Why answering is disabled in this view (read-only window, offline machine), or null. */
+const LockContext = createContext<string | null>(null)
 
 type Item<K extends TranscriptItem['kind']> = Extract<TranscriptItem, { kind: K }>
 
@@ -127,8 +131,22 @@ function Thinking({ item }: { item: Item<'thinking'> }) {
 /** Collapse whitespace so a one-line preview can be compared with the full command. */
 const squash = (t: string) => t.replace(/\s+/g, ' ').trim()
 
+/** Answer a request; a note comes back when it was already answered elsewhere (the first answer wins). */
+function useAnswer() {
+  const [note, setNote] = useState<string | null>(null)
+  const answer = (call: () => Promise<string | null>) => {
+    setNote(null)
+    call()
+      .then((n) => setNote(n))
+      .catch((err) => setNote(cleanError(err)))
+  }
+  return { note, answer }
+}
+
 function Approval({ item, sessionId, cwd }: { item: Item<'approval'>; sessionId: string; cwd: string }) {
   const [reason, setReason] = useState('')
+  const lock = useContext(LockContext)
+  const { note, answer } = useAnswer()
   const pending = !item.resolved
   const command = typeof item.input.command === 'string' ? item.input.command : null
   return (
@@ -147,16 +165,16 @@ function Approval({ item, sessionId, cwd }: { item: Item<'approval'>; sessionId:
       )}
       {pending ? (
         <div className="t-request-actions">
-          <button className="btn signal" onClick={() => void api.respondApproval(sessionId, item.id, 'allow')}>
+          <button className="btn signal" disabled={!!lock} title={lock ?? undefined} onClick={() => answer(() => api.respondApproval(sessionId, item.id, 'allow'))}>
             Allow
           </button>
           {item.canAlwaysAllow && (
-            <button className="btn" onClick={() => void api.respondApproval(sessionId, item.id, 'always')}>
+            <button className="btn" disabled={!!lock} onClick={() => answer(() => api.respondApproval(sessionId, item.id, 'always'))}>
               Always allow
             </button>
           )}
-          <input type="text" placeholder="Reason (optional)" value={reason} onChange={(e) => setReason(e.target.value)} />
-          <button className="btn" onClick={() => void api.respondApproval(sessionId, item.id, 'deny', reason)}>
+          <input type="text" placeholder="Reason (optional)" value={reason} disabled={!!lock} onChange={(e) => setReason(e.target.value)} />
+          <button className="btn" disabled={!!lock} onClick={() => answer(() => api.respondApproval(sessionId, item.id, 'deny', reason))}>
             Deny
           </button>
         </div>
@@ -165,6 +183,7 @@ function Approval({ item, sessionId, cwd }: { item: Item<'approval'>; sessionId:
           {item.resolved === 'auto' ? 'auto-allowed' : item.resolved === 'always' ? 'always allowed' : item.resolved === 'allow' ? 'allowed' : 'denied'}
         </span>
       )}
+      {note && <span className="resolution">{note}</span>}
     </div>
   )
 }
@@ -172,6 +191,8 @@ function Approval({ item, sessionId, cwd }: { item: Item<'approval'>; sessionId:
 function Question({ item, sessionId }: { item: Item<'question'>; sessionId: string }) {
   const [picked, setPicked] = useState<Record<string, string[]>>({})
   const [other, setOther] = useState<Record<string, string>>({})
+  const lock = useContext(LockContext)
+  const { note, answer } = useAnswer()
   const pending = !item.resolved
   const toggle = (q: AskQuestion, label: string) =>
     setPicked((p) => {
@@ -197,7 +218,7 @@ function Question({ item, sessionId }: { item: Item<'question'>; sessionId: stri
           {pending ? (
             <>
               {q.options.map((o) => (
-                <button key={o.label} className={`q-option${picked[q.question]?.includes(o.label) ? ' is-picked' : ''}`} onClick={() => toggle(q, o.label)}>
+                <button key={o.label} className={`q-option${picked[q.question]?.includes(o.label) ? ' is-picked' : ''}`} disabled={!!lock} onClick={() => toggle(q, o.label)}>
                   <span className="mark" style={q.multiSelect ? undefined : { borderRadius: '50%' }} />
                   <span>
                     <span className="label">{o.label}</span>
@@ -209,6 +230,7 @@ function Question({ item, sessionId }: { item: Item<'question'>; sessionId: stri
                 <input
                   type="text"
                   placeholder="Something else"
+                  disabled={!!lock}
                   value={other[q.question] ?? ''}
                   onChange={(e) => {
                     setOther((o) => ({ ...o, [q.question]: e.target.value }))
@@ -224,11 +246,12 @@ function Question({ item, sessionId }: { item: Item<'question'>; sessionId: stri
       ))}
       {pending && (
         <div className="t-request-actions">
-          <button className="btn signal" disabled={!complete} onClick={() => void api.respondQuestion(sessionId, item.id, answers)}>
+          <button className="btn signal" disabled={!complete || !!lock} title={lock ?? undefined} onClick={() => answer(() => api.respondQuestion(sessionId, item.id, answers))}>
             Answer
           </button>
         </div>
       )}
+      {note && <span className="resolution">{note}</span>}
     </div>
   )
 }
@@ -317,8 +340,9 @@ function FilesChanged({ items, cwd }: { items: TranscriptItem[]; cwd: string }) 
   )
 }
 
-function Reply({ sessionId }: { sessionId: string }) {
+function Reply({ sessionId, lock }: { sessionId: string; lock: string | null }) {
   const [text, setText] = useState('')
+  const [error, setError] = useState<string | null>(null)
   const pasted = usePastedImages()
   const area = useRef<HTMLTextAreaElement>(null)
   const dictation = useDictation(text, setText, area)
@@ -329,25 +353,33 @@ function Reply({ sessionId }: { sessionId: string }) {
     el.style.height = 'auto'
     el.style.height = `${el.scrollHeight}px`
   }, [text])
-  const canSend = (!!text.trim() || pasted.images.length > 0) && !dictating
+  const canSend = (!!text.trim() || pasted.images.length > 0) && !dictating && !lock
   const send = () => {
     if (!canSend) return
-    void api.sendMessage(sessionId, text, pasted.images)
-    setText('')
-    pasted.clear()
+    setError(null)
+    // Cleared only once it was accepted, so nothing typed is lost when the machine cannot take it.
+    api
+      .sendMessage(sessionId, text, pasted.images)
+      .then(() => {
+        setText('')
+        pasted.clear()
+      })
+      .catch((err) => setError(cleanError(err)))
   }
   return (
     <div className="reply-wrap">
       <Attachments images={pasted.images} onRemove={pasted.remove} />
       <DictationStatus d={dictation} />
+      {error && <div className="dictation-status">{error}</div>}
       <div className="reply">
         <div className="dictation-field">
           <textarea
             ref={area}
             rows={1}
             value={text}
-            placeholder="Reply to Claude"
+            placeholder={lock ?? 'Reply to Claude'}
             readOnly={dictating}
+            disabled={!!lock}
             className={dictating ? 'is-dictating' : undefined}
             onPaste={pasted.onPaste}
             onChange={(e) => setText(e.target.value)}
@@ -373,15 +405,17 @@ function Reply({ sessionId }: { sessionId: string }) {
 }
 
 function Identity({ session }: { session: SessionInfo }) {
+  const lock = useContext(LockContext)
   if (!session.identity) return null
   if (session.identity.login) return <span className="identity">@{session.identity.login}</span>
   return (
     <button
       className="identity is-none"
       title="This session has no GitHub account. Sign in for the next sessions."
+      disabled={!!lock}
       onClick={() => {
-        useStore.getState().openPanel('login', 'github')
-        void window.symphony.ghLogin()
+        useStore.getState().openPanel('login', session.machineId ?? 'local')
+        void window.symphony.ghLogin(session.machineId)
       }}
     >
       no GitHub account
@@ -392,41 +426,45 @@ function Identity({ session }: { session: SessionInfo }) {
 export function SessionPanel({ panel }: { panel: Panel }) {
   const session = useStore((s) => s.sessions[panel.targetId])
   const items = useStore((s) => s.transcripts[panel.targetId] ?? EMPTY)
-  const model = useModelLabel(session?.model ?? '')
+  const model = useModelLabel(session?.model ?? '', session?.machineId)
+  const lock = useLock(session?.machineId)
   const filter = useMemo(() => (i: TranscriptItem) => i.kind === 'approval' || i.kind === 'question' || !('parent' in i) || !i.parent, [])
   if (!session) return null
   const live = session.status !== 'finished' && session.status !== 'idle'
   return (
-    <FloatingPanel
-      panel={panel}
-      title={
-        <span style={{ display: 'inline-flex', gap: 10, alignItems: 'center' }} title={statusLabel(session.status)}>
-          <Glyph status={session.status} size={10} />
-          {session.kind === 'optimize' ? 'Optimizing prompt' : session.title.split('\n')[0]}
-        </span>
-      }
-      meta={
-        <>
-          {model}
-          {session.effort && ` · ${EFFORT_LABELS[session.effort].toLowerCase()}`} <Identity session={session} />
-        </>
-      }
-      actions={
-        live ? (
-          <button className="icon-btn" title="Stop" onClick={() => void api.stopSession(session.id)}>
-            <IconStop />
-          </button>
-        ) : (
-          <button className="icon-btn" title="Remove session from the graph" onClick={() => void api.dismissSession(session.id)}>
-            <IconTrash />
-          </button>
-        )
-      }
-    >
-      <FilesChanged items={items} cwd={session.cwd} />
-      <Transcript session={session} items={items} filter={filter} />
-      <Reply sessionId={session.id} />
-    </FloatingPanel>
+    <LockContext.Provider value={lock}>
+      <FloatingPanel
+        panel={panel}
+        machineId={session.machineId}
+        title={
+          <span style={{ display: 'inline-flex', gap: 10, alignItems: 'center' }} title={statusLabel(session.status)}>
+            <Glyph status={session.status} size={10} />
+            {session.kind === 'optimize' ? 'Optimizing prompt' : session.title.split('\n')[0]}
+          </span>
+        }
+        meta={
+          <>
+            {model}
+            {session.effort && ` · ${EFFORT_LABELS[session.effort].toLowerCase()}`} <Identity session={session} />
+          </>
+        }
+        actions={
+          live ? (
+            <button className="icon-btn" title="Stop" disabled={!!lock} onClick={() => void api.stopSession(session.id)}>
+              <IconStop />
+            </button>
+          ) : (
+            <button className="icon-btn" title="Remove session from the graph" disabled={!!lock} onClick={() => void api.dismissSession(session.id)}>
+              <IconTrash />
+            </button>
+          )
+        }
+      >
+        <FilesChanged items={items} cwd={session.cwd} />
+        <Transcript session={session} items={items} filter={filter} />
+        <Reply sessionId={session.id} lock={lock} />
+      </FloatingPanel>
+    </LockContext.Provider>
   )
 }
 
@@ -440,20 +478,24 @@ export function AgentPanel({ panel }: { panel: Panel }) {
   const items = useStore((s) => (agent ? (s.transcripts[agent.sessionId] ?? EMPTY) : EMPTY))
   const toolUseId = agent?.toolUseId
   const agentId = agent?.id
+  const lock = useLock(session?.machineId)
   const filter = useMemo(() => (i: TranscriptItem) => ('agentId' in i && i.agentId === agentId) || ('parent' in i && !!toolUseId && i.parent === toolUseId), [toolUseId, agentId])
   if (!agent || !session) return null
   return (
-    <FloatingPanel
-      panel={panel}
-      title={
-        <span style={{ display: 'inline-flex', gap: 10, alignItems: 'center' }} title={statusLabel(agent.status)}>
-          <Glyph status={agent.status} size={8} />
-          {agent.description}
-        </span>
-      }
-      meta={agent.subagentType}
-    >
-      <Transcript session={session} items={items} filter={filter} />
-    </FloatingPanel>
+    <LockContext.Provider value={lock}>
+      <FloatingPanel
+        panel={panel}
+        machineId={session.machineId}
+        title={
+          <span style={{ display: 'inline-flex', gap: 10, alignItems: 'center' }} title={statusLabel(agent.status)}>
+            <Glyph status={agent.status} size={8} />
+            {agent.description}
+          </span>
+        }
+        meta={agent.subagentType}
+      >
+        <Transcript session={session} items={items} filter={filter} />
+      </FloatingPanel>
+    </LockContext.Provider>
   )
 }

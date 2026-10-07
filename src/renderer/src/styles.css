@@ -1268,3 +1268,375 @@ select.model:hover {
   border-radius: 4px;
   display: block;
 }
+
+/* ---------- loops ---------- */
+
+/* Step markers: circles are agent steps, squares are human reviews. */
+.pips {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+.pip {
+  width: 7px;
+  height: 7px;
+  border: 1px solid var(--grey-1);
+  border-radius: 50%;
+  display: inline-block;
+  flex: none;
+}
+.pip.human {
+  border-radius: 1px;
+}
+.pip.is-past {
+  background: var(--grey-1);
+}
+.pip.is-current {
+  background: var(--bone);
+  border-color: var(--bone);
+}
+.node-loop .node-title {
+  font-size: 14px;
+  font-weight: 500;
+  max-width: 260px;
+}
+
+.loop-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.loop-body > * {
+  flex-shrink: 0;
+}
+
+.loop-editor,
+.loop-run {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.loop-editor input,
+.loop-editor textarea,
+.loop-decision textarea {
+  background: var(--bg-sunken);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  outline: none;
+}
+.loop-editor input:focus,
+.loop-editor textarea:focus,
+.loop-decision textarea:focus {
+  border-color: var(--grey-1);
+}
+.loop-name {
+  height: 36px;
+  padding: 0 10px;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.step-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 0 12px;
+  border-top: 1px solid var(--line);
+}
+.step-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.step-num {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--grey-2);
+  width: 14px;
+}
+.step-title {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  font-size: 13px;
+}
+.step-prompt {
+  width: 100%;
+  resize: vertical;
+  padding: 8px 10px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.step-card .attachments {
+  padding: 0;
+}
+.step-opts {
+  display: flex;
+  gap: 8px;
+}
+
+.loop-add,
+.loop-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.loop-add {
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+.loop-add .spacer,
+.loop-foot .hint {
+  flex: 1;
+}
+.loop-foot .hint {
+  font-size: 11px;
+  color: var(--grey-2);
+}
+.loop-limit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--grey-2);
+}
+.loop-limit input {
+  width: 48px;
+  height: 26px;
+  padding: 0 6px;
+  font-family: var(--mono);
+}
+.loop-error {
+  margin: 0;
+  font-size: 12px;
+  color: var(--bone);
+}
+
+.loop-steps {
+  display: flex;
+  flex-direction: column;
+}
+.step-row {
+  border-top: 1px solid var(--line);
+}
+.step-row-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: none;
+  border: 0;
+  padding: 8px 4px;
+  text-align: left;
+  color: var(--grey-3);
+}
+.step-row-head:hover {
+  background: var(--bg-hover);
+}
+.step-row.is-current .step-row-title {
+  color: var(--bone);
+  font-weight: 500;
+}
+.step-row-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.step-row-meta {
+  font-size: 11px;
+  color: var(--grey-2);
+  font-family: var(--mono);
+}
+.step-row-detail {
+  padding: 0 4px 10px 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.detail-label {
+  font-size: 11px;
+  color: var(--grey-2);
+  font-weight: 500;
+}
+
+.loop-reason {
+  margin: 0;
+  color: var(--grey-3);
+}
+.handoff {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  background: var(--bg-sunken);
+  border-radius: 4px;
+}
+
+.artifacts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.artifact {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  text-align: left;
+  background: none;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  padding: 6px 10px;
+}
+.artifact:hover {
+  border-color: var(--grey-2);
+  background: var(--bg-hover);
+}
+.artifact-label {
+  color: var(--bone);
+  flex: none;
+}
+.artifact-target {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--grey-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.loop-history {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.history-item {
+  border-top: 1px solid var(--line);
+  padding: 8px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12.5px;
+}
+.history-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.history-move {
+  color: var(--bone);
+  flex: 1;
+}
+.history-meta {
+  font-size: 11px;
+  color: var(--grey-2);
+  font-family: var(--mono);
+}
+.btn.small {
+  height: 24px;
+  padding: 0 8px;
+  font-size: 11px;
+}
+
+/* ---------- auto-approve ---------- */
+
+.dock-btn.is-on {
+  background: var(--bone);
+  border-color: var(--bone);
+  color: var(--bg);
+}
+.dock-btn.is-on:hover {
+  background: #fff;
+  color: var(--bg);
+}
+.app-mark-state {
+  color: var(--bone);
+}
+
+/* ---------- dictation ---------- */
+
+.dictation-field {
+  position: relative;
+}
+.reply .dictation-field {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+.reply .dictation-field textarea {
+  width: 100%;
+}
+/* While dictating, the field keeps the text (for sizing) but the overlay draws it. */
+textarea.is-dictating {
+  color: transparent !important;
+  caret-color: transparent;
+}
+.dictation-overlay {
+  position: absolute;
+  pointer-events: none;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  overflow: hidden;
+  border-style: solid;
+  border-color: transparent;
+  color: var(--bone);
+  box-sizing: border-box;
+}
+.dictation-interim {
+  opacity: 0.55;
+}
+.dictation-status {
+  font-size: 11px;
+  color: var(--grey-2);
+  padding: 2px 14px 0;
+}
+.reply-wrap .dictation-status {
+  padding: 8px 16px 0;
+}
+.step-card .dictation-status {
+  padding: 0;
+}
+
+.icon-btn.mic {
+  position: relative;
+}
+.icon-btn.mic.is-recording {
+  background: var(--bone);
+  color: var(--bg);
+}
+.icon-btn.mic.is-recording::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 6px;
+  border: 1px solid var(--bone);
+  animation: mic-breathe 1.6s ease-in-out infinite;
+}
+@keyframes mic-breathe {
+  50% {
+    opacity: 0.2;
+    transform: scale(1.06);
+  }
+}
+.icon-btn.mic.is-busy {
+  opacity: 1;
+}
+.mic-arc {
+  position: absolute;
+  inset: -6px;
+  margin: auto;
+  animation: spin 1.4s linear infinite;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .icon-btn.mic.is-recording::after {
+    animation: none;
+  }
+}

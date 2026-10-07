@@ -4,9 +4,10 @@ import './monaco'
 import { ComposerBubble } from './components/Composer'
 import { FloatingPanel } from './components/FloatingPanel'
 import { Graph } from './components/Graph'
-import { IconMeter, IconPlus, IconTerminal } from './components/icons'
+import { IconAutoApprove, IconMeter, IconPlus, IconTerminal } from './components/icons'
 import { TerminalPanel } from './components/TerminalPanel'
 import { UsagePanel } from './components/UsagePanel'
+import { LoopPanel } from './components/LoopPanel'
 import { AgentPanel, SessionPanel } from './components/SessionView'
 import { ClaudeMdPanel, DiffPanel, McpPanel, SkillPanel } from './components/Viewer'
 import { api, useStore, type Panel } from './store'
@@ -64,6 +65,8 @@ function PanelFor({ panel }: { panel: Panel }) {
       return <TerminalPanel panel={panel} />
     case 'usage':
       return <UsagePanel panel={panel} />
+    case 'loop':
+      return <LoopPanel panel={panel} />
   }
 }
 
@@ -75,6 +78,30 @@ function UsageButton() {
   return (
     <button className="dock-btn" title={title} onClick={() => useStore.getState().openPanel('usage', 'claude')}>
       <IconMeter levels={windows.map((w) => w.percent / 100)} />
+    </button>
+  )
+}
+
+/** The window title, with a reminder while auto-approve is on. */
+function AppMark() {
+  const on = useStore((s) => s.autoApprove)
+  return (
+    <div className="app-mark">
+      Symphony{on && <span className="app-mark-state"> · auto-approving</span>}
+    </div>
+  )
+}
+
+function AutoApproveButton() {
+  const on = useStore((s) => s.autoApprove)
+  return (
+    <button
+      className={`dock-btn${on ? ' is-on' : ''}`}
+      aria-pressed={on}
+      title={on ? 'Auto-approve is on: permission prompts are allowed without asking. Click to turn off.' : 'Auto-approve: allow permission prompts without asking'}
+      onClick={() => void api.setAutoApprove(!on)}
+    >
+      <IconAutoApprove />
     </button>
   )
 }
@@ -123,7 +150,7 @@ export function App() {
   return (
     <ReactFlowProvider>
       <div className="drag-strip" />
-      <div className="app-mark">Symphony</div>
+      <AppMark />
       {ready && <Graph />}
       {ready && !hasProjects && (
         <div className="empty-hint">
@@ -138,6 +165,7 @@ export function App() {
           <IconTerminal size={16} />
         </button>
         <UsageButton />
+        <AutoApproveButton />
       </div>
       {panels.map((p) => (
         <PanelFor key={p.id} panel={p} />

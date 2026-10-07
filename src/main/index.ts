@@ -6,12 +6,14 @@ import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
 import type { InvokeApi } from '@shared/api'
 import { USER_HUB_ID, type AppSnapshot, type EffortLevel, type ImageInput, type UsageInfo, type GhAccounts, type GitStats, type McpInfo, type MainEvent, type ModelOption, type Project, type SkillInfo } from '@shared/types'
-import { inspect, isProjectScoped, projectSkills, readClaudeMd, readUsage, toMcpInfo, userSkills, writeClaudeMd } from './claudeConfig'
+import { dictationLanguage, inspect, isProjectScoped, projectSkills, readClaudeMd, readUsage, toMcpInfo, userSkills, writeClaudeMd } from './claudeConfig'
 import { TerminalManager } from './terminals'
+import { LoopManager } from './loops'
 import { getFileDiff, getStats, remoteHost } from './git'
 import { getAccounts, login, resolveIdentity } from './github'
 import { extractOptimizedPrompt, OPTIMIZE_LINGER_MS, optimizeCommand } from './pipeline'
-import { claudeJsonPath, home, quitWhenAllWindowsClosed, repairPath, samePath, windowChrome } from './platform'
+import { refineDictation } from './dictation'
+import { claudeJsonPath, ensureMicAccess, home, openArtifact, quitWhenAllWindowsClosed, repairPath, samePath, windowChrome } from './platform'
 import { SessionManager } from './sessions'
 import { loadState, saveState, type PersistedState } from './store'
 
@@ -35,6 +37,7 @@ let hubMcp: McpInfo[] = []
 const projectConfig = new Map<string, { skills: SkillInfo[]; mcp: McpInfo[] }>()
 const gitStats = new Map<string, GitStats>()
 let usage: UsageInfo | null = null
+let autoApprove = false
 
 let usageAfterTurn: NodeJS.Timeout | undefined
 
@@ -49,9 +52,18 @@ function emit(e: MainEvent): void {
 
 const sessions = new SessionManager(emit, () => persist())
 const terminals = new TerminalManager(emit)
+const loops = new LoopManager({
+  sessions,
+  emit,
+  persist: () => persist(),
+  project: (id) => project(id),
+  identityFor: (cwd) => identityFor(cwd),
+  defaultModel: () => state.defaultModel
+})
 
 function persist(): void {
   state.sessions = sessions.list().filter((s) => s.kind !== 'optimize')
+  state.loops = loops.list()
   saveState(state)
 }
 
@@ -297,7 +309,9 @@ function snapshot(): AppSnapshot {
     models,
     defaultModel: state.defaultModel,
     efforts: state.efforts,
-    usage
+    usage,
+    loops: loops.list(),
+    autoApprove
   }
 }
 
@@ -305,6 +319,7 @@ const handlers: InvokeApi = {
   snapshot: async () => snapshot(),
   addProject,
   async removeProject(id) {
+    for (const l of loops.list()) if (l.projectId === id) loops.delete(l.id)
     for (const s of sessions.list()) if (s.projectId === id) sessions.dismiss(s.id)
     state.projects = state.projects.filter((p) => p.id !== id)
     projectConfig.delete(id)
@@ -319,6 +334,8 @@ const handlers: InvokeApi = {
     if (p) p.position = position
     const s = sessions.get(id)
     if (s) s.position = position
+    const l = loops.list().find((x) => x.id === id)
+    if (l) l.position = position
     persist()
   },
   startPipeline,
@@ -364,7 +381,22 @@ const handlers: InvokeApi = {
   termStart: async (id, projectId, cols, rows) => terminals.start(id, projectId ? project(projectId).path : home, cols, rows),
   termWrite: async (id, data) => terminals.write(id, data),
   termResize: async (id, cols, rows) => terminals.resize(id, cols, rows),
-  termKill: async (id) => terminals.kill(id)
+  termKill: async (id) => terminals.kill(id),
+  loopCreate: async (projectId, draft) => loops.create(projectId, draft),
+  loopUpdate: async (id, draft) => loops.update(id, draft),
+  loopDelete: async (id) => loops.delete(id),
+  loopStart: (id) => loops.start(id),
+  loopStop: async (id) => loops.stop(id),
+  loopDecide: (id, decision) => loops.decide(id, decision),
+  openArtifact: (projectId, artifact) => openArtifact(project(projectId).path, artifact),
+  async setAutoApprove(on) {
+    autoApprove = on
+    sessions.setAutoApprove(on)
+    emit({ type: 'autoApprove', on })
+  },
+  micAccess: () => ensureMicAccess(),
+  refineDictation: (text) => refineDictation(text),
+  dictationLanguage: () => dictationLanguage()
 }
 
 function createWindow(): void {
@@ -402,6 +434,7 @@ app.whenReady().then(async () => {
   await repairPath()
   state = loadState()
   sessions.restore(state.sessions)
+  loops.restore(state.loops)
   for (const [name, fn] of Object.entries(handlers)) {
     ipcMain.handle(`symphony:${name}`, (_e, ...args: unknown[]) => (fn as (...a: unknown[]) => unknown)(...args))
   }

@@ -7,6 +7,8 @@ import { IconSend, IconStop, IconTrash } from './icons'
 import { Markdown } from './Markdown'
 import { usePastedImages } from '../images'
 import { Attachments } from './Attachments'
+import { useDictation } from '../speech/dictation'
+import { DictationOverlay, DictationStatus, MicButton } from './Dictate'
 import { useModelLabel } from './nodes'
 
 const EMPTY: TranscriptItem[] = []
@@ -159,7 +161,9 @@ function Approval({ item, sessionId, cwd }: { item: Item<'approval'>; sessionId:
           </button>
         </div>
       ) : (
-        <span className="resolution">{item.resolved === 'always' ? 'always allowed' : item.resolved === 'allow' ? 'allowed' : 'denied'}</span>
+        <span className="resolution">
+          {item.resolved === 'auto' ? 'auto-allowed' : item.resolved === 'always' ? 'always allowed' : item.resolved === 'allow' ? 'allowed' : 'denied'}
+        </span>
       )}
     </div>
   )
@@ -317,13 +321,15 @@ function Reply({ sessionId }: { sessionId: string }) {
   const [text, setText] = useState('')
   const pasted = usePastedImages()
   const area = useRef<HTMLTextAreaElement>(null)
+  const dictation = useDictation(text, setText, area)
+  const dictating = dictation.state !== 'idle'
   useEffect(() => {
     const el = area.current
     if (!el) return
     el.style.height = 'auto'
     el.style.height = `${el.scrollHeight}px`
   }, [text])
-  const canSend = !!text.trim() || pasted.images.length > 0
+  const canSend = (!!text.trim() || pasted.images.length > 0) && !dictating
   const send = () => {
     if (!canSend) return
     void api.sendMessage(sessionId, text, pasted.images)
@@ -333,21 +339,31 @@ function Reply({ sessionId }: { sessionId: string }) {
   return (
     <div className="reply-wrap">
       <Attachments images={pasted.images} onRemove={pasted.remove} />
+      <DictationStatus d={dictation} />
       <div className="reply">
-        <textarea
-          ref={area}
-          rows={1}
-          value={text}
-          placeholder="Reply to Claude"
-          onPaste={pasted.onPaste}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault()
-              send()
-            }
-          }}
-        />
+        <div className="dictation-field">
+          <textarea
+            ref={area}
+            rows={1}
+            value={text}
+            placeholder="Reply to Claude"
+            readOnly={dictating}
+            className={dictating ? 'is-dictating' : undefined}
+            onPaste={pasted.onPaste}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape' && dictation.state === 'recording') {
+                e.preventDefault()
+                dictation.cancel()
+              } else if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                send()
+              }
+            }}
+          />
+          <DictationOverlay d={dictation} area={area} />
+        </div>
+        <MicButton d={dictation} />
         <button className="icon-btn" title="Send" disabled={!canSend} onClick={send}>
           <IconSend />
         </button>

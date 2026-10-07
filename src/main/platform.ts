@@ -1,11 +1,13 @@
 // Everything that differs between Windows and macOS lives here: config locations, PATH repair,
 // process spawning, gh lookup and the git credential wiring that makes sessions use a gh account.
 // Other modules must not branch on process.platform themselves.
+import { shell, systemPreferences } from 'electron'
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, extname, isAbsolute, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 export const isWindows = process.platform === 'win32'
 export const isMac = process.platform === 'darwin'
@@ -184,4 +186,42 @@ export function claudeExecutable(): string | undefined {
   } catch {
     return undefined
   }
+}
+
+/**
+ * File types that open in a viewer, never as a program. Artifact paths come from agent output, and
+ * "open with the default app" would run executables and scripts (.exe, .bat, .ps1, and on Windows
+ * even .js and .vbs through Windows Script Host), so everything else is only shown in its folder.
+ */
+const VIEWABLE = new Set([
+  '.html', '.htm', '.pdf', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp',
+  '.md', '.txt', '.log', '.csv', '.json', '.xml', '.yml', '.yaml'
+])
+
+/** Open a handed-over file or link. Returns an error message, or null on success. */
+export async function openArtifact(baseDir: string, target: { path?: string; url?: string }): Promise<string | null> {
+  if (target.url) {
+    if (/^https?:\/\//i.test(target.url)) {
+      await shell.openExternal(target.url)
+      return null
+    }
+    if (!/^file:/i.test(target.url)) return 'Only http, https and file links can be opened.'
+    target = { path: fileURLToPath(target.url) }
+  }
+  if (!target.path) return 'Nothing to open.'
+  const full = isAbsolute(target.path) ? target.path : resolve(baseDir, target.path)
+  if (!existsSync(full)) return `${full} does not exist.`
+  if (!VIEWABLE.has(extname(full).toLowerCase())) {
+    shell.showItemInFolder(full)
+    return null
+  }
+  const err = await shell.openPath(full)
+  return err || null
+}
+
+/** macOS asks the user once for microphone access; Windows grants it through its own privacy settings. */
+export async function ensureMicAccess(): Promise<boolean> {
+  if (!isMac) return true
+  if (systemPreferences.getMediaAccessStatus('microphone') === 'granted') return true
+  return systemPreferences.askForMediaAccess('microphone')
 }

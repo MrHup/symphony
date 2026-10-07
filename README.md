@@ -49,6 +49,9 @@ The app keeps its graph and transcripts in Electron's userData folder
 | Check Claude usage | The meter in the bottom-left dock shows the 5-hour, weekly and weekly-per-model (Fable) windows as bars; click it for exact percentages and reset times |
 | Start work | Right-click a project, type a prompt, pick a model and its effort, **Start** (Ctrl/⌘+Enter) |
 | Set effort | The picker next to the model lists only the levels that model accepts (low, medium, high, extra-high, max) and is hidden for models without effort, such as Haiku. Each model remembers its own effort; "Default effort" leaves it to Claude Code |
+| Build a loop | The loop button on a project opens the loop editor (see Loops below) |
+| Approve automatically | The double-check button in the dock. While it is on (bone white, and "auto-approving" next to the Symphony mark), Claude Code permission prompts are allowed without asking, and any waiting ones are released. It is off every time Symphony starts |
+| Dictate a prompt | The mic button in the prompt bubble, a session's reply box or a loop step. Click, speak (the words appear dimmed as you speak), click again; the text is cleaned up and inserted where the cursor was. Escape cancels while listening |
 | Attach images | Paste them (Ctrl/⌘+V) into the right-click prompt bubble or a session's reply box. Thumbnails appear above the text; hover one to remove it. A reply can be just images |
 | Watch or answer a session | Click its node. Approvals, questions and replies all happen in that view |
 | Watch a subagent | Click its node (it hangs off its session while it runs) |
@@ -89,6 +92,60 @@ them), and the images go with the optimized prompt to the new session. Images la
 1568 px on the long edge, the size Claude works at, are scaled down before sending; the transcript
 keeps small thumbnails. If the optimize session fails, its
 node stays so you can open it.
+
+## Loops
+
+A loop chains prompts on one project and repeats them until its last step moves forward. Each
+step is either an **agent step** (a prompt that runs as its own Claude Code session) or a **human
+review** (you decide). Example: build the report, review it against the design, code-review the
+changes, then you approve.
+
+- **Routing.** Every agent step ends by calling a `loop_route` tool that Symphony gives it:
+  `forward` hands the work to the next step, `back` (with a step number) sends it to an earlier
+  step, or reruns its own, with a summary of what must change. Agents cannot end a loop early;
+  the loop ends only when the last step moves forward, so a final human review cannot be
+  skipped. At a human review the loop node turns into the orange square, and the loop panel
+  shows your instructions, what the previous step handed over, and its files and links. You
+  approve (continue, or finish if it is the last step), send the work back to an earlier step
+  with notes, or stop.
+- **Handoffs.** Steps run in fresh sessions, so each one starts with the loop's step list, the
+  last few moves, and the latest handoff (the summary plus artifacts: file paths and URLs). Work
+  sent back arrives as "address this first". Images pasted into a step (for example design
+  references) go with every run of that step.
+- **Prompt improvement.** When a loop starts, all agent-step prompts go through `/optimize-prompt`
+  in parallel, with a note that they are loop steps. The results are cached and reused on later
+  runs until you edit the step. Expand a step in the loop panel to see both versions.
+- **Limits and pauses.** A loop pauses after a number of agent runs in a row without a human
+  decision (12 by default, set in the editor). It also pauses when a step ends without routing
+  even after one reminder, when you stop a step's session, or when Symphony closes mid-step. A
+  paused loop asks you to continue, rerun the step, send the work back, or stop.
+- **On the graph.** The loop node hangs under its project, with markers for its steps (circles
+  for agent steps, squares for human reviews; the current one is white). Only the running step's
+  session is shown, under the loop; earlier runs are listed in the loop's history with "Open
+  session".
+- **Opening artifacts.** Links open in the browser. Files open in their default app only if they
+  are documents or images (HTML, PDF, images, Markdown, text, JSON, CSV and similar); anything
+  else is shown in its folder, because paths come from agent output and opening a script or
+  program would run it.
+
+## Auto-approve and dictation
+
+**Auto-approve** answers Claude Code's permission prompts with "allow" for every session and loop
+step while it is on. It does not answer Claude's questions, which still need you. It does not
+override `ask` rules you set in Claude Code settings (those prompts are still asked), and deny rules
+are applied by Claude Code before Symphony is asked. Each auto-allowed action stays in the
+transcript as "auto-allowed".
+
+**Dictation** runs speech recognition locally. Claude Code's own voice dictation uses a private
+claude.ai speech endpoint that the Agent SDK does not expose, so Symphony uses Whisper (`whisper-base`,
+multilingual) through Transformers.js instead: on the GPU through WebGPU when available, otherwise on
+the CPU. The model (about 80–150 MB) downloads from Hugging Face on first use and is cached; audio
+never leaves the machine. While you speak, the text so far is re-transcribed about once a second and
+shown dimmed; when you stop, the take is transcribed once more and Claude Haiku cleans it up (filler
+words, pause dots, punctuation, misheard technical terms) through Claude Code, on the subscription
+like everything else. The language comes from Claude Code's `language` setting in
+`~/.claude/settings.json` (the same setting Claude Code uses for its own dictation), English when
+unset.
 
 ## Subscription only
 
@@ -142,6 +199,7 @@ with your own environment, so a `claude` you run there yourself is not covered.
 | `src/main/git.ts` | Change counts and HEAD/working-tree contents (includes untracked files, like VS Code) |
 | `src/main/github.ts` | gh accounts, per-session identity, in-app device login |
 | `src/main/terminals.ts` | One pseudo-terminal per terminal panel |
+| `src/main/loops.ts` | Loops: running steps, the `loop_route` tool, handoffs, human decisions, pauses |
 | `src/main/index.ts` | Window, IPC handlers, background refresh loops |
 | `src/preload/index.ts` | The `window.symphony` bridge (context-isolated, sandboxed) |
 | `src/shared/` | Types and the IPC contract shared by both sides |
@@ -151,6 +209,9 @@ with your own environment, so a `claude` you run there yourself is not covered.
 | `src/renderer/src/components/Viewer.tsx` | Diff viewer, skill preview, MCP details, CLAUDE.md editor |
 | `src/renderer/src/components/TerminalPanel.tsx` | Floating terminal (xterm.js) |
 | `src/renderer/src/components/UsagePanel.tsx` | Usage bars and reset times |
+| `src/renderer/src/components/LoopPanel.tsx` | Loop editor, running view, human review card, history |
+| `src/renderer/src/speech/` | Dictation: microphone capture, the local Whisper worker, live preview |
+| `src/main/dictation.ts` | Clean-up of dictated text with Claude Haiku |
 | `scripts/drive.mjs` | Test driver: Playwright `_electron` behind a small HTTP command server |
 
 ## What was verified on Windows
@@ -177,6 +238,21 @@ on Windows 11, driving the built app:
   interrupting a running command, resizing, several at once, and every shell ending when its
   panel closes or the app quits.
 - Usage: the bars match the account's 5-hour, weekly and weekly Fable windows, with reset times.
+- Loops, in a three-step loop (build page, design review, human approval) on Haiku: the review
+  step sent the page back once with the list of changes and passed it on the second try; at the
+  human step, sending it back with a note got the change made and returned to review; approving
+  finished the loop. Also: cached improved prompts were reused on the next run; quitting
+  mid-step brought the loop back paused, and "Rerun this step" continued it; "Stop loop"
+  stopped the running step; artifact opening refused a missing file and non-web links.
+- Auto-approve: turning it on released a waiting Write approval (recorded as auto-allowed), and a
+  session started while it was on never stopped for approval; turning it off removed the reminder.
+- Dictation, with a Windows text-to-speech recording of a sentence with "um"s and "uh"s fed in
+  place of the microphone: the model downloaded on first use and ran on the GPU (WebGPU); the
+  words appeared dimmed in the prompt bubble while the audio played (first words about 4 s after
+  starting, including loading the cached model); after stopping, the cleaned text ("Please add a
+  test file for the math module. Use Node test, and run it with npm test when you are done.")
+  replaced it about 5 s later, and in the reply box it was inserted at the cursor between existing
+  text. Not tested with a physical microphone, and not with a language other than English.
 - Pasted images: two screenshots pasted into the prompt bubble reached the real session through the
   pipeline and Claude described both; an image-only reply and a 3000×2000 image (sent at
   1568×1045) worked in a session's reply box. The test fired paste events directly rather than using
@@ -212,6 +288,9 @@ All of this lives in `src/main/platform.ts` unless noted.
 - The app stays open with no windows and reopens from the Dock (`quitWhenAllWindowsClosed`).
 - Dropping a folder from Finder adds it (`webUtils.getPathForFile` in the preload).
 - ⌘+Enter in the composer and ⌘+S in the CLAUDE.md editor.
+- Dictation: `ensureMicAccess()` triggers the macOS microphone prompt (a packaged app also needs
+  `NSMicrophoneUsageDescription` in its Info.plist); WebGPU is used on Apple GPUs, with the CPU
+  fallback otherwise.
 - Terminals: `npm install` pulls the `@lydell/node-pty-darwin-*` binary; `terminalShell()` opens `pwsh`
   when PowerShell is installed (for example `brew install powershell`) and otherwise the login shell
   (zsh), and the panel title then says so; ⌘+C copies a selection and ⌘+V pastes.

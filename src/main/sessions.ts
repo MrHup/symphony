@@ -1,7 +1,7 @@
 // Runs Claude Code sessions through the Agent SDK and turns their message stream into graph state
 // (session/agent status) and transcript items. Approvals and AskUserQuestion prompts are held here
 // until the user answers them in the session view.
-import { query, type CanUseTool, type PermissionResult, type PermissionUpdate, type Query, type SDKMessage, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
+import { query, type CanUseTool, type McpServerConfig, type PermissionResult, type PermissionUpdate, type Query, type SDKMessage, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import { randomUUID } from 'node:crypto'
 import type { AgentInfo, ApprovalDecision, AskQuestion, EffortLevel, GhIdentity, ImageInput, MainEvent, NodeStatus, SessionInfo, SessionKind, TranscriptItem } from '@shared/types'
 import { claudeExecutable } from './platform'
@@ -15,6 +15,8 @@ const AGENT_LINGER_MS = 1600
 
 interface Pending {
   kind: 'approval' | 'question'
+  /** Raised by one of the user's own `ask` permission rules: always asked, even with auto-approve on. */
+  forcedAsk?: boolean
   agentId?: string
   input: Record<string, unknown>
   suggestions?: PermissionUpdate[]
@@ -74,6 +76,8 @@ interface Runtime {
   /** Streaming thinking/text items per parent, in block order, waiting for their final assistant block. */
   live: Map<string, TranscriptItem[]>
   idleTimer?: NodeJS.Timeout
+  /** Kept so a resumed process gets the same extra tools. */
+  tools?: SessionTools
   /** Resolves true once the process is confirmed to run on the Claude subscription; messages wait for it. */
   ready?: Promise<boolean>
   onResult?: (text: string, isError: boolean) => void
@@ -94,8 +98,17 @@ export interface StartOptions {
   env?: Record<string, string>
   /** Pasted images sent with the first message. */
   images?: ImageInput[]
+  /** Extra tools for this session (a loop step's routing tool), auto-approved by name. */
+  tools?: SessionTools
+  loopId?: string
+  loopStep?: number
   /** Called after every turn's result. */
   onResult?: (text: string, isError: boolean) => void
+}
+
+export interface SessionTools {
+  mcpServers: Record<string, McpServerConfig>
+  allowedTools: string[]
 }
 
 function toolResultText(content: unknown): string {
@@ -110,6 +123,8 @@ function toolResultText(content: unknown): string {
 
 export class SessionManager {
   private runtimes = new Map<string, Runtime>()
+  /** While on, permission prompts are allowed without asking. Off at every start of Symphony. */
+  private autoApprove = false
   private agents = new Map<string, AgentInfo>()
 
   constructor(
@@ -161,10 +176,13 @@ export class SessionManager {
       effort: opts.effort,
       status: 'working',
       createdAt: Date.now(),
-      identity: opts.identity
+      identity: opts.identity,
+      loopId: opts.loopId,
+      loopStep: opts.loopStep
     }
     const rt = this.newRuntime(info, opts.env ?? {})
     rt.onResult = opts.onResult
+    rt.tools = opts.tools
     this.runtimes.set(info.id, rt)
     this.emit({ type: 'session', session: info })
     this.onSessionsChanged()
@@ -178,6 +196,29 @@ export class SessionManager {
     if (!rt || (!text.trim() && !images.length)) return
     if (!rt.items.length) rt.items = loadTranscript(id)
     this.sendTurn(rt, text, images)
+  }
+
+  setAutoApprove(on: boolean): void {
+    this.autoApprove = on
+    if (!on) return
+    // Release approvals that are already waiting.
+    for (const rt of this.runtimes.values()) {
+      for (const [requestId, p] of [...rt.pending]) {
+        if (p.kind !== 'approval' || p.forcedAsk) continue
+        rt.pending.delete(requestId)
+        p.resolve({ behavior: 'allow', updatedInput: p.input })
+        this.resolveItem(rt, requestId, 'auto')
+      }
+      this.refreshStatus(rt)
+    }
+  }
+
+  /** Take an earlier loop-step run off the graph; it stays openable from the loop's history. */
+  archive(id: string): void {
+    const rt = this.runtimes.get(id)
+    if (!rt || rt.info.archived) return
+    rt.info.archived = true
+    this.emitSession(rt)
   }
 
   /** The pipeline moved on from this optimize session; its node fades out until it is dismissed. */
@@ -290,22 +331,30 @@ export class SessionManager {
       new Promise<PermissionResult>((resolve) => {
         const requestId = opts.requestId || randomUUID()
         const isQuestion = toolName === 'AskUserQuestion'
-        rt.pending.set(requestId, { kind: isQuestion ? 'question' : 'approval', agentId: opts.agentID, input: toolInput, suggestions: opts.suggestions, resolve })
         const parent = opts.agentID ? (this.agents.get(opts.agentID)?.toolUseId ?? null) : null
+        const approvalItem = {
+          kind: 'approval' as const,
+          id: requestId,
+          toolName,
+          input: toolInput,
+          title: opts.title,
+          description: opts.description,
+          parent,
+          agentId: opts.agentID,
+          canAlwaysAllow: !!opts.suggestions?.length && !opts.suppressAlwaysAllowRule
+        }
+        // Auto-approve: allow at once, but keep a record. Questions still need an answer, and prompts
+        // forced by the user's own ask rules are still asked.
+        if (!isQuestion && this.autoApprove && !opts.matchedAskRule) {
+          this.upsert(rt, { ...approvalItem, resolved: 'auto' })
+          resolve({ behavior: 'allow', updatedInput: toolInput })
+          return
+        }
+        rt.pending.set(requestId, { kind: isQuestion ? 'question' : 'approval', forcedAsk: !!opts.matchedAskRule, agentId: opts.agentID, input: toolInput, suggestions: opts.suggestions, resolve })
         if (isQuestion) {
           this.upsert(rt, { kind: 'question', id: requestId, questions: (toolInput.questions as AskQuestion[]) ?? [], parent, agentId: opts.agentID })
         } else {
-          this.upsert(rt, {
-            kind: 'approval',
-            id: requestId,
-            toolName,
-            input: toolInput,
-            title: opts.title,
-            description: opts.description,
-            parent,
-            agentId: opts.agentID,
-            canAlwaysAllow: !!opts.suggestions?.length && !opts.suppressAlwaysAllowRule
-          })
+          this.upsert(rt, approvalItem)
         }
         opts.signal.addEventListener('abort', () => {
           if (!rt.pending.delete(requestId)) return
@@ -330,6 +379,8 @@ export class SessionManager {
         thinking: { type: 'adaptive', display: 'summarized' },
         permissionMode: 'default',
         canUseTool,
+        mcpServers: rt.tools?.mcpServers,
+        allowedTools: rt.tools?.allowedTools,
         env: subscriptionEnv(process.env, { ...rt.env, CLAUDE_AGENT_SDK_CLIENT_APP: 'symphony/0.1.0' }),
         settings: subscriptionSettings,
         stderr: (data) => console.error(`[claude ${rt.info.id.slice(0, 8)}]`, data.trimEnd())
@@ -502,7 +553,7 @@ export class SessionManager {
     rt.live.clear()
   }
 
-  private resolveItem(rt: Runtime, requestId: string, resolution: ApprovalDecision | Record<string, string>): void {
+  private resolveItem(rt: Runtime, requestId: string, resolution: ApprovalDecision | 'auto' | Record<string, string>): void {
     const item = rt.items.find((i) => i.id === requestId)
     if (item?.kind === 'approval' && typeof resolution === 'string') item.resolved = resolution
     else if (item?.kind === 'question' && typeof resolution === 'object') item.resolved = resolution

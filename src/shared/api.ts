@@ -10,6 +10,10 @@ import type {
   Project,
   EffortLevel,
   ImageInput,
+  LoopArtifact,
+  LoopDecision,
+  LoopDraft,
+  LoopInfo,
   TranscriptItem
 } from './types'
 
@@ -44,6 +48,24 @@ export interface InvokeApi {
   termWrite(id: string, data: string): Promise<void>
   termResize(id: string, cols: number, rows: number): Promise<void>
   termKill(id: string): Promise<void>
+  loopCreate(projectId: string, draft: LoopDraft): Promise<LoopInfo>
+  /** Only while the loop is not running. */
+  loopUpdate(id: string, draft: LoopDraft): Promise<LoopInfo>
+  loopDelete(id: string): Promise<void>
+  /** Starts a draft/stopped/done loop from step 1, or resumes a paused one at its current step. */
+  loopStart(id: string): Promise<void>
+  loopStop(id: string): Promise<void>
+  loopDecide(id: string, decision: LoopDecision): Promise<void>
+  /** Opens a handed-over file in its default app, or a URL in the browser. */
+  openArtifact(projectId: string, artifact: LoopArtifact): Promise<string | null>
+  /** Allow Claude Code permission prompts without asking (not questions, not prompts forced by your own ask rules). */
+  setAutoApprove(on: boolean): Promise<void>
+  /** Ask the OS for microphone access where needed (macOS). */
+  micAccess(): Promise<boolean>
+  /** Clean up dictated text with Claude Haiku (filler words, punctuation, misheard terms). */
+  refineDictation(text: string): Promise<string>
+  /** Language to transcribe in (Claude Code's `language` setting, else English). */
+  dictationLanguage(): Promise<string>
 }
 
 export const INVOKE_METHODS: (keyof InvokeApi)[] = [
@@ -72,7 +94,18 @@ export const INVOKE_METHODS: (keyof InvokeApi)[] = [
   'termStart',
   'termWrite',
   'termResize',
-  'termKill'
+  'termKill',
+  'loopCreate',
+  'loopUpdate',
+  'loopDelete',
+  'loopStart',
+  'loopStop',
+  'loopDecide',
+  'openArtifact',
+  'setAutoApprove',
+  'micAccess',
+  'refineDictation',
+  'dictationLanguage'
 ]
 
 export interface SymphonyBridge extends InvokeApi {

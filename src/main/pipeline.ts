@@ -18,12 +18,15 @@ export function extractOptimizedPrompt(reply: string): string | null {
  * whose message carries images. So the optimizer gets a note about pasted images instead, and the
  * images themselves go with the optimized prompt to the real session.
  */
-export function optimizeCommand(prompt: string, imageCount = 0): string {
+export function optimizeCommand(prompt: string, imageCount = 0, context?: string): string {
   const one = imageCount === 1
-  const note = imageCount
-    ? `\n\n(The user attached ${one ? 'an image' : `${imageCount} images`} to this prompt. ${one ? 'It is' : 'They are'} sent along with the optimized prompt, so keep any references to ${one ? 'it' : 'them'}, e.g. "the attached screenshot".)`
-    : ''
-  return `/optimize-prompt ${prompt.trim()}${note}`
+  const notes = [
+    imageCount
+      ? `(The user attached ${one ? 'an image' : `${imageCount} images`} to this prompt. ${one ? 'It is' : 'They are'} sent along with the optimized prompt, so keep any references to ${one ? 'it' : 'them'}, e.g. "the attached screenshot".)`
+      : '',
+    context ? `(${context})` : ''
+  ].filter(Boolean)
+  return `/optimize-prompt ${prompt.trim()}${notes.length ? `\n\n${notes.join('\n\n')}` : ''}`
 }
 
 /** How long the finished optimize node stays on the graph before it is removed. */

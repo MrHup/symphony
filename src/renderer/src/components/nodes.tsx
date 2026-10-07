@@ -1,8 +1,8 @@
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react'
-import { EFFORT_LABELS, type AgentInfo, type GitStats, type McpInfo, type NodeStatus, type Project, type SessionInfo, type SkillInfo } from '@shared/types'
+import { EFFORT_LABELS, type AgentInfo, type GitStats, type LoopInfo, type McpInfo, type NodeStatus, type Project, type SessionInfo, type SkillInfo } from '@shared/types'
 import { api, useStore } from '../store'
 import { Glyph, statusLabel } from './Glyph'
-import { IconDoc, IconTerminal, IconTrash } from './icons'
+import { IconDoc, IconLoop, IconTerminal, IconTrash } from './icons'
 
 const nf = new Intl.NumberFormat('en-US')
 
@@ -14,7 +14,8 @@ function Handles() {
       <Handle id="tr" type="target" position={Position.Right} isConnectable={false} />
       <Handle id="sr" type="source" position={Position.Right} isConnectable={false} />
       <Handle id="sl" type="source" position={Position.Left} isConnectable={false} />
-      <Handle id="sb" type="source" position={Position.Bottom} isConnectable={false} />
+      {/* Under the glyph, so children stacked below hang from it in a straight line. */}
+      <Handle id="sb" type="source" position={Position.Bottom} isConnectable={false} style={{ left: 14 }} />
     </>
   )
 }
@@ -79,6 +80,16 @@ export function ProjectNode({ data }: NodeProps<ProjectNodeType>) {
             <IconTerminal />
           </button>
           <button
+            className="icon-btn nodrag"
+            title="New loop on this project"
+            onClick={(e) => {
+              e.stopPropagation()
+              useStore.getState().newLoop(project.id)
+            }}
+          >
+            <IconLoop />
+          </button>
+          <button
             className="icon-btn nodrag reveal"
             title="Remove from Symphony (the folder is not touched)"
             disabled={busy}
@@ -110,10 +121,64 @@ export function SessionNode({ data }: NodeProps<SessionNodeType>) {
       <div className="node-text">
         <span className="node-title">{session.title.split('\n')[0]}</span>
         <span className="node-sub">
+          {session.kind === 'loop' && session.loopStep !== undefined && <span>step {session.loopStep + 1}</span>}
           {optimize ? <span style={{ fontFamily: 'var(--mono)' }}>/optimize-prompt</span> : <span>{session.effort ? `${model} · ${EFFORT_LABELS[session.effort].toLowerCase()}` : model}</span>}
           {session.identity && (
             <span className={`identity${session.identity.login ? '' : ' is-none'}`}>{session.identity.login ? `@${session.identity.login}` : 'no GitHub account'}</span>
           )}
+        </span>
+      </div>
+      <Handles />
+    </div>
+  )
+}
+
+// ---------- loop ----------
+
+export type LoopNodeType = Node<{ loop: LoopInfo; status: NodeStatus }, 'loop'>
+
+function loopSub(l: LoopInfo): string {
+  const at = l.current !== null ? l.steps[l.current] : undefined
+  switch (l.state) {
+    case 'draft':
+      return `${l.steps.length} steps`
+    case 'optimizing':
+      return 'improving prompts'
+    case 'running':
+      return `step ${(l.current ?? 0) + 1} of ${l.steps.length} · ${at?.title ?? ''}`
+    case 'waiting':
+      return `your review · ${at?.title ?? ''}`
+    case 'paused':
+      return `paused at step ${(l.current ?? 0) + 1}`
+    case 'done':
+      return `done · ${l.runs} runs`
+    case 'stopped':
+      return 'stopped'
+  }
+}
+
+/** Step markers: circles for agent steps, squares for human steps; the current one is bone white. */
+function StepPips({ loop }: { loop: LoopInfo }) {
+  return (
+    <span className="pips">
+      {loop.steps.map((s, i) => {
+        const cls = `pip ${s.kind}${i === loop.current ? ' is-current' : loop.current !== null && i < loop.current ? ' is-past' : ''}`
+        return <span key={s.id} className={cls} title={`${i + 1}. ${s.title}`} />
+      })}
+    </span>
+  )
+}
+
+export function LoopNode({ data }: NodeProps<LoopNodeType>) {
+  const { loop, status } = data
+  return (
+    <div className={`node node-loop${stateClass(status)}`} title={`${statusLabel(status)}: ${loop.name}`}>
+      <Glyph status={status} size={20} variant="loop" />
+      <div className="node-text">
+        <span className="node-title">{loop.name}</span>
+        <span className="node-sub">
+          <StepPips loop={loop} />
+          <span>{loopSub(loop)}</span>
         </span>
       </div>
       <Handles />
@@ -234,6 +299,7 @@ export const nodeTypes = {
   project: ProjectNode,
   session: SessionNode,
   agent: AgentNode,
+  loop: LoopNode,
   hub: HubNode,
   skill: SkillNode,
   mcp: McpNode

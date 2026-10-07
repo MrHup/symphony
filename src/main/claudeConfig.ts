@@ -244,3 +244,16 @@ export async function writeClaudeMd(projectPath: string, content: string): Promi
   await writeFile(path, content, 'utf8')
   return path
 }
+
+/**
+ * The dictation language: Claude Code's `language` setting ("Preferred language for Claude
+ * responses and voice dictation"), from the user settings file. English when unset.
+ */
+export async function dictationLanguage(): Promise<string> {
+  try {
+    const settings = JSON.parse(await readFile(join(claudeDir, 'settings.json'), 'utf8')) as { language?: unknown }
+    return typeof settings.language === 'string' && settings.language.trim() ? settings.language.trim().toLowerCase() : 'english'
+  } catch {
+    return 'english'
+  }
+}

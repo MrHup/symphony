@@ -3,6 +3,8 @@ import { EFFORT_LABELS, type EffortLevel, type ModelOption } from '@shared/types
 import { usePastedImages } from '../images'
 import { api, useStore } from '../store'
 import { Attachments } from './Attachments'
+import { useDictation } from '../speech/dictation'
+import { DictationOverlay, DictationStatus, MicButton } from './Dictate'
 
 const ALL_EFFORTS: EffortLevel[] = ['low', 'medium', 'high', 'xhigh', 'max']
 
@@ -73,6 +75,8 @@ export function ComposerBubble() {
   const pasted = usePastedImages()
   const ref = useRef<HTMLDivElement>(null)
   const area = useRef<HTMLTextAreaElement>(null)
+  const dictation = useDictation(text, setText, area)
+  const dictating = dictation.state !== 'idle'
   const [pos, setPos] = useState({ left: 0, top: 0 })
   const [side, setSide] = useState<'right' | 'left'>('right')
 
@@ -115,7 +119,7 @@ export function ComposerBubble() {
 
   const submit = async () => {
     const prompt = text.trim()
-    if (!prompt || busy) return
+    if (!prompt || busy || dictating) return
     setBusy(true)
     useStore.getState().setDefaultModel(model)
     try {
@@ -136,28 +140,37 @@ export function ComposerBubble() {
       onKeyDown={(e) => {
         if (e.key === 'Escape') {
           e.preventDefault()
-          close()
+          // Escape first cancels a dictation in progress, then closes the bubble.
+          if (dictation.state === 'recording') dictation.cancel()
+          else if (!dictating) close()
         }
       }}
     >
       <div className="composer-target" title={target}>
         {target}
       </div>
-      <textarea
-        ref={area}
-        value={text}
-        placeholder={placeholder}
-        onPaste={pasted.onPaste}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-            e.preventDefault()
-            void submit()
-          }
-        }}
-      />
+      <div className="dictation-field">
+        <textarea
+          ref={area}
+          value={text}
+          placeholder={placeholder}
+          readOnly={dictating}
+          className={dictating ? 'is-dictating' : undefined}
+          onPaste={pasted.onPaste}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+              e.preventDefault()
+              void submit()
+            }
+          }}
+        />
+        <DictationOverlay d={dictation} area={area} />
+      </div>
+      <DictationStatus d={dictation} />
       <Attachments images={pasted.images} onRemove={pasted.remove} />
       <div className="composer-foot">
+        <MicButton d={dictation} />
         <ModelSelect value={model} onChange={setModel} />
         <EffortSelect
           model={model}
@@ -170,7 +183,7 @@ export function ComposerBubble() {
         />
         <span className="spacer" />
         <kbd>{window.symphony.platform === 'darwin' ? '⌘' : 'Ctrl'}+Enter</kbd>
-        <button className="btn primary" disabled={!text.trim() || busy} onClick={() => void submit()}>
+        <button className="btn primary" disabled={!text.trim() || busy || dictating} onClick={() => void submit()}>
           Start
         </button>
       </div>

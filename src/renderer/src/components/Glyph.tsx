@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { NodeStatus } from '@shared/types'
 
-export type GlyphVariant = 'default' | 'hub' | 'failed' | 'optimize'
+export type GlyphVariant = 'default' | 'hub' | 'failed' | 'optimize' | 'loop'
 
 /**
  * The shape that carries a node's status:
@@ -50,6 +50,21 @@ export function Glyph({ status, size, variant = 'default' }: { status: NodeStatu
       <>
         <circle className="shape" cx={c} cy={c} r={r - stroke / 2} fill="none" stroke="var(--grey-3)" strokeWidth={stroke} />
         <circle className="shape" cx={c} cy={c} r={r * 0.42} fill="var(--bone)" />
+      </>
+    )
+  } else if (variant === 'loop') {
+    // An open ring with an arrowhead: a cycle.
+    const rr = r - stroke
+    const a0 = (-60 * Math.PI) / 180
+    const a1 = (240 * Math.PI) / 180
+    const p = (a: number) => [c + rr * Math.cos(a), c + rr * Math.sin(a)]
+    const [x0, y0] = p(a0)
+    const [x1, y1] = p(a1)
+    const head = Math.max(2.5, size * 0.22)
+    shape = (
+      <>
+        <path className="shape" d={`M ${x0} ${y0} A ${rr} ${rr} 0 1 1 ${x1} ${y1}`} fill="none" stroke={status === 'working' ? 'var(--bone)' : 'var(--grey-3)'} strokeWidth={stroke} strokeLinecap="round" />
+        <path className="shape" d={`M ${x0 - head} ${y0 - head * 0.2} L ${x0} ${y0} L ${x0 + head * 0.15} ${y0 - head}`} fill="none" stroke={status === 'working' ? 'var(--bone)' : 'var(--grey-3)'} strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round" />
       </>
     )
   } else if (variant === 'optimize') {

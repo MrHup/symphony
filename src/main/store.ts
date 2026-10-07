@@ -4,7 +4,7 @@ import { app } from 'electron'
 import { existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { EffortLevel, Point, Project, SessionInfo, TranscriptItem } from '@shared/types'
+import type { EffortLevel, LoopInfo, Point, Project, SessionInfo, TranscriptItem } from '@shared/types'
 
 export interface PersistedState {
   projects: Project[]
@@ -12,6 +12,7 @@ export interface PersistedState {
   hubPosition: Point
   defaultModel: string
   efforts: Record<string, EffortLevel>
+  loops: LoopInfo[]
 }
 
 const dir = () => app.getPath('userData')
@@ -20,7 +21,7 @@ const transcriptDir = () => join(dir(), 'transcripts')
 const transcriptFile = (id: string) => join(transcriptDir(), `${id.replace(/[^\w-]/g, '_')}.json`)
 
 export function loadState(): PersistedState {
-  const fallback: PersistedState = { projects: [], sessions: [], hubPosition: { x: -420, y: 0 }, defaultModel: 'opus', efforts: {} }
+  const fallback: PersistedState = { projects: [], sessions: [], hubPosition: { x: -420, y: 0 }, defaultModel: 'opus', efforts: {}, loops: [] }
   try {
     return { ...fallback, ...JSON.parse(readFileSync(stateFile(), 'utf8')) }
   } catch {

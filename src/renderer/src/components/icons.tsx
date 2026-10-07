@@ -68,3 +68,19 @@ export const IconMeter = ({ levels, size = 16 }: { levels: number[]; size?: numb
     })}
   </svg>
 )
+
+/** A cycle arrow: create a loop. */
+export const IconLoop = ({ size = 14 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 14 14" {...base}>
+    <path d="M10.9 4.75A4.5 4.5 0 1 0 11.5 7" />
+    <path d="M11.25 1.75v3h-3" />
+  </svg>
+)
+
+/** Two check marks: approve automatically. */
+export const IconAutoApprove = ({ size = 16 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" {...base}>
+    <path d="M1.75 8.25l2.75 2.75 5-6" />
+    <path d="M7.25 10.25l.75.75 6-7" />
+  </svg>
+)

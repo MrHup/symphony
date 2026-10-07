@@ -17,6 +17,10 @@ export default defineConfig({
   },
   renderer: {
     resolve: { alias: { '@shared': resolve('src/shared') } },
-    plugins: [react()]
+    plugins: [react()],
+    build: {
+      // Never inline scripts as data: URLs (the audio worklet among them): the page's CSP only runs scripts from the app itself.
+      assetsInlineLimit: (file: string) => (file.endsWith('.js') ? false : undefined)
+    }
   }
 })

@@ -6,6 +6,7 @@ import type {
   GhAccounts,
   GitStats,
   LoginPrompt,
+  LoopInfo,
   MainEvent,
   McpInfo,
   ModelOption,
@@ -20,7 +21,7 @@ import type {
 
 export const api = window.symphony
 
-export type PanelKind = 'session' | 'agent' | 'diff' | 'skill' | 'mcp' | 'claudemd' | 'login' | 'terminal' | 'usage'
+export type PanelKind = 'session' | 'agent' | 'diff' | 'skill' | 'mcp' | 'claudemd' | 'login' | 'terminal' | 'usage' | 'loop'
 
 export interface Panel {
   id: string
@@ -57,6 +58,8 @@ interface State {
   defaultModel: string
   efforts: Record<string, EffortLevel>
   usage: UsageInfo | null
+  loops: Record<string, LoopInfo>
+  autoApprove: boolean
   transcripts: Record<string, TranscriptItem[]>
   login: LoginPrompt | null
   panels: Panel[]
@@ -73,6 +76,8 @@ interface State {
   setModelEffort(model: string, effort: EffortLevel | null): void
   /** Open a new terminal in a project's folder, or the home folder when projectId is null. */
   openTerminal(projectId: string | null): void
+  /** Open the loop editor for a new loop on a project. */
+  newLoop(projectId: string): void
   loadTranscript(sessionId: string): Promise<void>
 }
 
@@ -94,6 +99,7 @@ const PANEL_SIZES: Record<PanelKind, { w: number; h: number }> = {
   claudemd: { w: 820, h: 700 },
   login: { w: 380, h: 250 },
   terminal: { w: 820, h: 460 },
+  loop: { w: 720, h: 760 },
   usage: { w: 400, h: 300 }
 }
 
@@ -114,6 +120,8 @@ export const useStore = create<State>((set, get) => ({
   defaultModel: 'opus',
   efforts: {},
   usage: null,
+  loops: {},
+  autoApprove: false,
   transcripts: {},
   login: null,
   panels: [],
@@ -133,7 +141,9 @@ export const useStore = create<State>((set, get) => ({
       models: s.models,
       defaultModel: s.defaultModel,
       efforts: s.efforts ?? {},
-      usage: s.usage
+      usage: s.usage,
+      loops: byId(s.loops ?? []),
+      autoApprove: !!s.autoApprove
     })
   },
 
@@ -194,6 +204,15 @@ export const useStore = create<State>((set, get) => ({
       case 'usage':
         set({ usage: e.usage })
         break
+      case 'loop':
+        set((s) => ({ loops: { ...s.loops, [e.loop.id]: e.loop } }))
+        break
+      case 'autoApprove':
+        set({ autoApprove: e.on })
+        break
+      case 'loopRemoved':
+        set((s) => ({ loops: omit(s.loops, e.id), panels: s.panels.filter((p) => !(p.kind === 'loop' && p.targetId === e.id)) }))
+        break
       case 'term':
       case 'termExit':
         terminalBus.deliver(e)
@@ -239,6 +258,10 @@ export const useStore = create<State>((set, get) => ({
   setDefaultModel(model) {
     set({ defaultModel: model })
     void api.setDefaultModel(model)
+  },
+
+  newLoop(projectId) {
+    get().openPanel('loop', `new:${projectId}#${++terminalCount}`)
   },
 
   openTerminal(projectId) {
@@ -297,5 +320,28 @@ export const terminalBus = {
     const l = this.listeners.get(e.id)
     if (e.type === 'term') l?.data(e.data)
     else l?.exit(e.code)
+  }
+}
+
+/** A loop's node status: its active step session's status while running, the signal while it waits for you. */
+export function loopStatus(l: LoopInfo, sessions: Record<string, SessionInfo>): NodeStatus {
+  switch (l.state) {
+    case 'waiting':
+    case 'paused':
+      return 'input'
+    case 'done':
+      return 'finished'
+    case 'draft':
+    case 'stopped':
+      return 'idle'
+    case 'optimizing': {
+      const opt = Object.values(sessions).filter((s) => s.loopId === l.id && s.kind === 'optimize' && !s.handedOff && !s.archived)
+      const r = rollup(opt.map((s) => s.status))
+      return r === 'approval' || r === 'input' ? r : 'working'
+    }
+    case 'running': {
+      const s = l.activeSessionId ? sessions[l.activeSessionId] : undefined
+      return s && (s.status === 'approval' || s.status === 'input') ? s.status : 'working'
+    }
   }
 }

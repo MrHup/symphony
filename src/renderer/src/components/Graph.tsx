@@ -1,7 +1,7 @@
 import { applyNodeChanges, ReactFlow, useReactFlow, type Edge, type Node, type NodeChange } from '@xyflow/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { USER_HUB_ID, type Point } from '@shared/types'
-import { api, needsUser, rollup, useStore } from '../store'
+import { api, loopStatus, needsUser, rollup, useStore } from '../store'
 import { nodeTypes } from './nodes'
 
 const SESSION_DX = 400
@@ -11,6 +11,9 @@ const AGENT_DY = 34
 const SKILL_DY = 28
 const SKILL_COL_W = 215
 const SKILL_ROWS = 14
+const LOOP_DY = 64
+const LOOP_SESSION_DX = 36
+const LOOP_SESSION_DY = 46
 
 type State = ReturnType<typeof useStore.getState>
 
@@ -21,7 +24,12 @@ function layout(s: State, moved: Record<string, Point>): { nodes: Node[]; edges:
   const pos = new Map<string, Point>()
   const at = (id: string, fallback: Point) => moved[id] ?? fallback
 
-  const sessions = Object.values(s.sessions).sort((a, b) => a.createdAt - b.createdAt)
+  // Earlier runs of loop steps stay off the graph; the loop panel lists them.
+  const sessions = Object.values(s.sessions)
+    .filter((x) => !x.archived)
+    .sort((a, b) => a.createdAt - b.createdAt)
+  const loops = Object.values(s.loops).sort((a, b) => a.createdAt - b.createdAt)
+  const loopIds = new Set(loops.map((l) => l.id))
   const edge = (source: string, target: string, signal: boolean, faded = false) =>
     edges.push({ id: `${source}->${target}`, source, target, className: signal ? 'edge-signal' : faded ? 'edge-faded' : undefined, selectable: false, focusable: false })
 
@@ -56,12 +64,15 @@ function layout(s: State, moved: Record<string, Point>): { nodes: Node[]; edges:
     const p = at(project.id, project.position)
     pos.set(project.id, p)
     const mine = sessions.filter((x) => x.projectId === project.id)
-    const status = rollup(mine.map((x) => x.status))
+    const myLoops = loops.filter((l) => l.projectId === project.id)
+    const loopStatuses = myLoops.map((l) => loopStatus(l, s.sessions)).filter((st) => st !== 'idle')
+    const status = rollup([...mine.map((x) => x.status), ...loopStatuses])
+    const busy = mine.some((x) => x.status !== 'finished') || myLoops.some((l) => ['optimizing', 'running', 'waiting', 'paused'].includes(l.state))
     nodes.push({
       id: project.id,
       type: 'project',
       position: p,
-      data: { project, status, stats: s.git[project.id], busy: mine.some((x) => x.status !== 'finished') }
+      data: { project, status, stats: s.git[project.id], busy }
     })
     const extras = [...s.skills.filter((k) => k.projectId === project.id), ...s.mcp.filter((m) => m.projectId === project.id)]
     extras.forEach((x, i) => {
@@ -70,6 +81,18 @@ function layout(s: State, moved: Record<string, Point>): { nodes: Node[]; edges:
       const isMcp = x.id.startsWith('mcp:')
       nodes.push(isMcp ? { id: x.id, type: 'mcp', position: xp, data: { mcp: x } } : { id: x.id, type: 'skill', position: xp, data: { skill: x } })
       edge(project.id, x.id, false, true)
+    })
+    // Loops sit below the project, under its own skills and MCP servers, each with room for the
+    // sessions it currently shows (its running step, or prompts being improved).
+    let loopY = p.y + 112 + extras.length * SKILL_DY
+    myLoops.forEach((l) => {
+      const shown = sessions.filter((x) => x.anchorId === l.id).length
+      const lp = at(l.id, l.position ?? { x: p.x + 44, y: loopY })
+      loopY += LOOP_DY + shown * LOOP_SESSION_DY
+      pos.set(l.id, lp)
+      const st = loopStatus(l, s.sessions)
+      nodes.push({ id: l.id, type: 'loop', position: lp, data: { loop: l, status: st } })
+      edge(project.id, l.id, needsUser(st), st === 'finished' || st === 'idle')
     })
   }
 
@@ -90,6 +113,8 @@ function layout(s: State, moved: Record<string, Point>): { nodes: Node[]; edges:
       fallback = { x: skillsLeftEdge - 330, y: a.y + i * 44 }
     } else if (anchor === USER_HUB_ID) {
       fallback = { x: a.x, y: a.y - 90 - i * 50 }
+    } else if (loopIds.has(anchor)) {
+      fallback = { x: a.x + LOOP_SESSION_DX, y: a.y + 52 + i * LOOP_SESSION_DY }
     } else {
       fallback = { x: a.x + 260, y: a.y + i * 44 }
     }
@@ -120,7 +145,9 @@ function layout(s: State, moved: Record<string, Point>): { nodes: Node[]; edges:
     const a = pos.get(e.source)
     const b = pos.get(e.target)
     if (!a || !b) continue
-    if (e.source === USER_HUB_ID && s.mcp.some((m) => m.id === e.target)) {
+    // Children stacked under their parent (MCP under the hub; skills, MCP and loops under a project) hang from its bottom.
+    const below = b.y > a.y + 40 && b.x >= a.x - 20 && b.x < a.x + 160
+    if ((e.source === USER_HUB_ID && s.mcp.some((m) => m.id === e.target)) || ((s.projects[e.source] || s.loops[e.source]) && below)) {
       e.sourceHandle = 'sb'
       e.targetHandle = 'tl'
     } else if (b.x < a.x - 40) {
@@ -135,7 +162,7 @@ function layout(s: State, moved: Record<string, Point>): { nodes: Node[]; edges:
   return { nodes, edges }
 }
 
-const PERSISTED = (id: string, s: State) => id === USER_HUB_ID || !!s.projects[id] || !!s.sessions[id]
+const PERSISTED = (id: string, s: State) => id === USER_HUB_ID || !!s.projects[id] || !!s.sessions[id] || !!s.loops[id]
 
 export function Graph() {
   const state = useStore()
@@ -165,7 +192,7 @@ export function Graph() {
   }, [structure, fitAll])
 
   // When sessions or agents appear, zoom out only if one landed outside the window.
-  const liveKey = `${Object.keys(state.sessions).sort().join(',')}|${Object.keys(state.agents).sort().join(',')}`
+  const liveKey = `${Object.keys(state.sessions).sort().join(',')}|${Object.keys(state.agents).sort().join(',')}|${Object.keys(state.loops).sort().join(',')}`
   useEffect(() => {
     const t = setTimeout(() => {
       const { x, y, zoom } = getViewport()
@@ -192,7 +219,7 @@ export function Graph() {
       })
     })
     // Recompute on any state change or drag movement.
-  }, [state.projects, state.sessions, state.agents, state.skills, state.mcp, state.git, state.hubPosition, state.hubOpen, tick])
+  }, [state.projects, state.sessions, state.agents, state.skills, state.mcp, state.git, state.hubPosition, state.hubOpen, state.loops, tick])
 
   const onNodesChange = useCallback((changes: NodeChange[]) => {
     let movedAny = false
@@ -220,6 +247,8 @@ export function Graph() {
         return s.openPanel('session', node.id)
       case 'agent':
         return s.openPanel('agent', node.id)
+      case 'loop':
+        return s.openPanel('loop', node.id)
       case 'hub':
         return s.setHubOpen(!s.hubOpen)
       case 'skill':
@@ -233,6 +262,7 @@ export function Graph() {
     event.preventDefault()
     const s = useStore.getState()
     if (node.type === 'session') return s.openPanel('session', node.id)
+    if (node.type === 'loop') return s.openPanel('loop', node.id)
     if (node.type !== 'project' && node.type !== 'skill' && node.type !== 'mcp') return
     const el = (event.target as Element).closest('.react-flow__node')
     const rect = el?.getBoundingClientRect()

@@ -15,8 +15,8 @@ export interface Project {
   position: Point
 }
 
-/** task: a normal session. optimize: the /optimize-prompt step of the pipeline. config: edits a skill or MCP server. */
-export type SessionKind = 'task' | 'optimize' | 'config'
+/** task: a normal session. optimize: the /optimize-prompt step of the pipeline. config: edits a skill or MCP server. loop: one run of a loop step. */
+export type SessionKind = 'task' | 'optimize' | 'config' | 'loop'
 
 export interface GhIdentity {
   host: string
@@ -42,6 +42,11 @@ export interface SessionInfo {
   position?: Point
   /** Set on an optimize session once the pipeline has started the real session; its node then fades out. */
   handedOff?: boolean
+  /** Loop sessions: the loop and the step index they ran. */
+  loopId?: string
+  loopStep?: number
+  /** Hidden from the graph (an earlier run of a loop step); still listed in the loop's history. */
+  archived?: boolean
 }
 
 export interface AgentInfo {
@@ -93,7 +98,8 @@ export type TranscriptItem =
       parent: string | null
       agentId?: string
       canAlwaysAllow: boolean
-      resolved?: 'allow' | 'always' | 'deny'
+      /** auto: allowed by auto-approve, without asking. */
+      resolved?: 'allow' | 'always' | 'deny' | 'auto'
     }
   | {
       kind: 'question'
@@ -186,6 +192,90 @@ export interface LoginPrompt {
   error?: string
 }
 
+// ---------- loops ----------
+
+export type LoopStepKind = 'agent' | 'human'
+
+export interface LoopStep {
+  id: string
+  kind: LoopStepKind
+  title: string
+  /** Agent: the task. Human: what to review and how to decide. */
+  prompt: string
+  model?: string
+  effort?: EffortLevel
+  /** Agent steps: sent with every run of the step (e.g. design references). */
+  images?: ImageInput[]
+  /** The prompt after /optimize-prompt, reused until the step is edited. */
+  optimized?: string
+  /** What `optimized` was made from, to tell when the step changed. */
+  optimizedFrom?: string
+}
+
+export interface LoopArtifact {
+  label: string
+  /** A file, absolute or relative to the project folder. */
+  path?: string
+  url?: string
+}
+
+/** One move of the loop: who decided, from which step, to where, and what they handed over. */
+export interface LoopHandoff {
+  fromStep: number
+  /** forward: next step (or finish after the last). back: to `toStep`. stop: the user stopped the loop. */
+  decision: 'forward' | 'back' | 'stop'
+  /** Step the loop moved to; null when it finished or stopped. */
+  toStep: number | null
+  by: 'agent' | 'human'
+  summary: string
+  artifacts: LoopArtifact[]
+  sessionId?: string
+  at: number
+}
+
+/**
+ * draft: defined, never started. optimizing: improving step prompts. running: an agent step runs.
+ * waiting: a human step waits for you. paused: needs you to route it (no routing, stopped step, run limit).
+ * done: the last step moved forward. stopped: you stopped it.
+ */
+export type LoopState = 'draft' | 'optimizing' | 'running' | 'waiting' | 'paused' | 'done' | 'stopped'
+
+export interface LoopInfo {
+  id: string
+  projectId: string
+  name: string
+  steps: LoopStep[]
+  /** Most agent step runs in a row without a human decision, so a loop cannot cycle forever unattended. */
+  maxRuns: number
+  state: LoopState
+  /** Index of the step that is running or waiting. */
+  current: number | null
+  /** Agent step runs so far. */
+  runs: number
+  /** `runs` at the last human decision; the run limit counts from here. */
+  runsAtHuman?: number
+  history: LoopHandoff[]
+  activeSessionId?: string
+  pausedReason?: string
+  createdAt: number
+  position?: Point
+}
+
+/** What the loop editor sends: the definition without run state. */
+export interface LoopDraft {
+  name: string
+  steps: LoopStep[]
+  maxRuns: number
+}
+
+/** A routing decision made by you, on a human step or a paused loop. */
+export interface LoopDecision {
+  decision: 'forward' | 'back' | 'stop'
+  /** With back: the step index to return to. */
+  step?: number
+  feedback: string
+}
+
 export interface UsageWindow {
   id: string
   label: string
@@ -219,6 +309,8 @@ export interface AppSnapshot {
   /** The effort last picked for each model. */
   efforts: Record<string, EffortLevel>
   usage: UsageInfo | null
+  loops: LoopInfo[]
+  autoApprove: boolean
 }
 
 export type ApprovalDecision = 'allow' | 'always' | 'deny'
@@ -240,6 +332,9 @@ export type MainEvent =
   | { type: 'models'; models: ModelOption[] }
   | { type: 'focus'; sessionId: string }
   | { type: 'usage'; usage: UsageInfo }
+  | { type: 'loop'; loop: LoopInfo }
+  | { type: 'loopRemoved'; id: string }
+  | { type: 'autoApprove'; on: boolean }
   | { type: 'term'; id: string; data: string }
   | { type: 'termExit'; id: string; code: number }
 

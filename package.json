@@ -8,6 +8,7 @@
     "start": "node scripts/run.mjs preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "drive": "node scripts/drive.mjs",
+    "headless": "node scripts/headless.mjs",
     "test": "node scripts/test.mjs"
   },
   "license": "UNLICENSED",

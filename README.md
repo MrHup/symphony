@@ -31,6 +31,7 @@ Other scripts:
 | `npm run build` | Build main, preload and renderer into `out/` |
 | `npm run typecheck` | Type-check the main process and the UI |
 | `npm run drive` | Launch the built app under Playwright and accept test commands over HTTP (see `scripts/drive.mjs`) |
+| `npm run headless -- <command>` | Run this machine as a remote machine without Electron or a window (see "Headless remote machine" below) |
 | `npm test` | Protocol, control and security tests of remote orchestration (`test/`), under plain Node |
 
 `npm run dev` and `npm start` go through `scripts/run.mjs`, which clears `ELECTRON_RUN_AS_NODE`.
@@ -203,6 +204,45 @@ saved, so after a restart every paired machine appears at once, offline, with it
 step and pairing request on every machine, oldest first. Ctrl/⌘+J opens the oldest; pressing it
 again moves to the next.
 
+### Headless remote machine
+
+A machine that cannot run Electron (a server without a display, a container, a VM over SSH) can
+still be a remote machine. `npm run headless` runs Symphony's core and the remote machine's link
+under plain Node, with no window, controlled from the command line. The orchestrator sees it like
+any other remote machine and drives it the same way. The orchestrator itself is always the app.
+
+```bash
+npm install                                    # Electron's binary is only downloaded when the app is first launched
+npm run headless -- login                      # sign in to Claude Code, once
+npm run headless -- share ~/code ~/work        # the folders projects can be added from (default: home)
+npm run headless -- terminals on               # optional
+npm run headless -- pair 192.168.1.20          # or no address, to find the orchestrator over mDNS
+```
+
+`pair` shows the 6-digit code and asks you to accept it in the terminal; accept on the orchestrator
+too. The client then serves the orchestrator until you stop it (Ctrl+C or SIGTERM, which sends
+`quit`). After that, `npm run headless` (or `npm run headless -- run`) starts it again and redials
+the paired orchestrator. Run it under the OS's service manager (systemd, launchd, a scheduled task)
+to keep it up. `status` shows the settings, `log` the audit log, and `unpair` forgets the
+orchestrator. Settings are read when the client starts, so stop it before changing them. The client
+exits when the orchestrator revokes it.
+
+It keeps its data in `~/.symphony-headless` (or `SYMPHONY_USER_DATA`), apart from the app's. It
+differs from the app in these ways:
+
+- **Device key.** Plain Node cannot reach the OS keychain, so the private key is stored unencrypted,
+  the way SSH stores its keys. The data folder is created readable by its owner only (mode 700 on
+  macOS and Linux; on Windows the profile folder's permissions apply).
+- **Power.** It does not prevent idle sleep and gets no sleep or wake events. After a sleep the link
+  notices the silence and redials. The battery is not reported.
+- **Previews.** Without `nativeImage` there are no thumbnails: the orchestrator loads the full image
+  instead.
+
+`scripts/headless.mjs` bundles `src/headless/` with esbuild, with `electron` replaced by
+`src/headless/electron.ts`, which provides those plain-Node versions of the Electron APIs on the
+remote machine's path. Then it runs the bundle. Every request, event and check is the same code the
+app runs in remote mode.
+
 Each remote machine logs what the orchestrator did there (sessions started, approvals answered,
 auto-approve toggled, CLAUDE.md saved, terminals opened); **Show the audit log** in its panel.
 Either side can revoke the other.
@@ -313,6 +353,7 @@ with your own environment, so a `claude` you run there yourself is not covered.
 | Session lifetime | A session's Claude Code process stays alive for follow-ups and closes after 10 idle minutes; a later reply resumes it by session id | Avoids keeping one process per finished session while making replies feel instant. |
 | Persistence | Projects, positions and session metadata in `symphony-state.json`; each transcript in its own JSON file | Small and inspectable. Restarted sessions show as finished and resume on reply. |
 | Remote machines | The same Symphony app in remote mode on each machine, dialing out to the orchestrator over the local network | Every feature is reused as it is, since a remote machine is just another Symphony core reached over a link instead of IPC. Rejected: remote desktop (one machine at a time, no shared graph), SSH from the orchestrator (needs Remote Login on the Mac, Keychain logins are unreliable over SSH, and every feature would need a remote implementation), and Claude Code Remote Control (relays through Anthropic's servers to claude.ai and covers sessions only, no diffs, files or loops). |
+| Machines without Electron | `npm run headless`: the same core and link bundled for plain Node, with Electron swapped for a small stand-in at build time | No second implementation of anything the orchestrator can do, and the Electron app is untouched. Only the device key, power events and thumbnails differ, and those are the only things the stand-in provides. Rejected: a separate agent speaking its own protocol (every feature twice) and running Electron with no window (still needs Electron's binary and system libraries, which these machines lack). |
 | Remote machine's own window | Read-only while the orchestrator is connected; Disconnect always works | Two people answering the same approvals would need conflict rules. The rule is enforced in the core, so a misbehaving UI cannot get around it. |
 | Usage | Shown for the orchestrator's own account only | Each machine signs in to its own Claude account; remote machines do not poll usage while linked. |
 
@@ -345,6 +386,7 @@ with your own environment, so a `claude` you run there yourself is not covered.
 | `src/renderer/src/components/LoopPanel.tsx` | Loop editor, running view, human review card, history |
 | `src/renderer/src/speech/` | Dictation: microphone capture, the local Whisper worker, live preview |
 | `src/main/dictation.ts` | Clean-up of dictated text with Claude Haiku |
+| `src/headless/` | The headless remote machine: `index.ts` (command line, core and link without a window), `electron.ts` (plain-Node stand-in for the Electron APIs the remote path uses); built and run by `scripts/headless.mjs` |
 | `scripts/drive.mjs` | Test driver: Playwright `_electron` behind a small HTTP command server |
 | `src/renderer/src/components/RemotePanel.tsx`, `MachinePanels.tsx`, `NeedsYou.tsx`, `ControlBanner.tsx` | Remote-machines panel, pairing and folder browser, the Needs you list, the read-only banner |
 | `scripts/test.mjs`, `test/` | Remote-orchestration tests: an orchestrator and a remote machine in one Node process over TLS on 127.0.0.1 |
@@ -407,12 +449,19 @@ on Windows 11, driving the built app:
   restarting it (relinked and resynced in 2 s, read-only again); restarting the orchestrator
   (machine shown offline with its last state at once, then relinked). `npm test` covers the rest
   of the plan's protocol, control and security tests (30 tests).
+- The headless remote machine, on this PC against the app as orchestrator (loopback, separate
+  profiles): `pair` by code from the terminal and the app; the machine as its own root with hub and
+  skills; adding a project through the shared-folder check (a folder outside it refused); a Haiku
+  pipeline running on it and answered in the app; killed and started again with `run` (relinked);
+  revoked from the app (the client said so and exited); `log` showing every step.
 
 Not verified on this machine:
 
 - **Remote orchestration on a real network**: mDNS discovery, a remote machine on another computer,
   Windows Firewall, sleep and wake, and Wi-Fi changes (the two-instance test runs on loopback).
   These need two real machines.
+- **The headless remote machine on Linux or macOS, or on another computer.** It was run on Windows only,
+  on loopback.
 - **Remote terminals in the window.** Routing, the switch and the ID handling are covered by
   `npm test`; a remote terminal panel was not opened in the app.
 

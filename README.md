@@ -160,8 +160,8 @@ older than ten minutes, in case Symphony quit in the middle of a cleanup.
 Symphony on one machine (the **orchestrator**, e.g. a Windows PC) can drive Symphony on other
 machines on the same local network (**remote machines**, e.g. MacBooks). Sessions, project files,
 git and each machine's own Claude Code login stay on that machine; the orchestrator only prompts,
-watches, approves and reviews. Nothing besides the Symphony repo and its npm packages is installed
-anywhere: no SSH, no system service, no overlay network.
+watches, approves and reviews. Every machine runs the same Symphony app from this repo; no SSH
+server, system service or overlay network is needed.
 
 Set up, once per remote machine:
 
@@ -205,7 +205,53 @@ again moves to the next.
 
 Each remote machine logs what the orchestrator did there (sessions started, approvals answered,
 auto-approve toggled, CLAUDE.md saved, terminals opened); **Show the audit log** in its panel.
-Either side can revoke the other. The design is in `plan.md`.
+Either side can revoke the other.
+
+### How it works
+
+- **One core, two ways in.** `SymphonyCore` (`src/main/core.ts`) holds the services and serves every
+  request. The local window reaches it over Electron IPC; an orchestrator reaches a remote machine's
+  core over the link, with the same request names, arguments and events. No feature has a second,
+  remote implementation.
+- **Who connects to whom.** The orchestrator listens; remote machines dial out to it. Only the
+  orchestrator needs a firewall exception, and nothing listens on a remote machine.
+- **Identity and pairing.** Each Symphony makes a key pair and a self-signed certificate on first
+  use; the private key is stored encrypted by the OS (`safeStorage`: Keychain on macOS, DPAPI on
+  Windows), and the certificate's SHA-256 fingerprint is the machine's id. To pair, the remote
+  machine opens a pairing connection (its own TLS ALPN name), both sides compute a 6-digit code from
+  the two fingerprints, and the user accepts on both. A man-in-the-middle would present other
+  certificates and produce other codes. Pairing requests are rate-limited and expire after two
+  minutes.
+- **After pairing.** Mutual TLS with both certificates pinned. The orchestrator refuses an unknown or
+  revoked certificate right after the TLS handshake, before reading any request; the remote machine
+  refuses any orchestrator but the paired one.
+- **Least exposure.** Remote mode is off by default. The orchestrator listens only on loopback and
+  private or link-local addresses (never a public interface) and advertises itself over mDNS only
+  while orchestration is on. Projects can only be added from the remote machine's shared folders
+  (paths are resolved and checked there), terminals need their own switch, and the read-only rule
+  for the remote machine's window is enforced by its core. Claude, GitHub and MCP credentials never
+  leave their machine, and each machine's sessions run under its own subscription check.
+- **The link.** One WebSocket over TLS per remote machine, on port 47821. JSON frames, at most 32 MB
+  each: `hello` (protocol and app version; the protocol must match), `snapshot`, `invoke`/`result`,
+  numbered `event`s, `ping`/`pong` every 10 s (30 s of silence counts as offline), `health`
+  (battery), `refresh` (window focus, at most every 10 s), and `bye` with a reason (`sleep`,
+  `quit`, `disconnect`, `revoke`) so the orchestrator can tell "asleep" or "quit" from a link that
+  went silent. A remote machine redials with backoff from 1 s to 30 s, and at once when its network
+  changes or it wakes.
+- **Staying in sync.** A gap in event numbers, or any reconnect, makes the orchestrator take a fresh
+  snapshot; snapshot and transcript replies carry the event number they reflect, so nothing is
+  applied twice, and transcript items are merged by id. Every request has an id: the remote machine
+  remembers results for five minutes, so a request resent after a drop runs once. Requests time out
+  after 30 s, except long ones such as starting a loop.
+- **Routing.** Projects, sessions and loops have UUIDs, so the orchestrator keeps a table of which
+  machine owns each. IDs that repeat across machines (skills, MCP servers, the `~/.claude` hub,
+  terminals) carry a machine prefix in the orchestrator's window, removed before forwarding.
+  Requests that name nothing a machine owns (adding a project, default model, auto-approve, GitHub
+  sign-in) take an explicit machine id. Positions of remote nodes are the orchestrator's own and
+  never cross the link.
+- **Power.** While a remote machine has sessions or loops running, it prevents idle sleep
+  (`powerSaveBlocker`). A closed lid still sleeps it; its sessions then stop and resume on reply,
+  as after a restart.
 
 ## Auto-approve and dictation
 
@@ -266,6 +312,9 @@ with your own environment, so a `claude` you run there yourself is not covered.
 | Permissions | Sessions run in Claude Code's `default` permission mode with your user/project/local settings | Approvals behave exactly as in the terminal, including your allow rules. "Always allow" applies the rule Claude Code suggests. |
 | Session lifetime | A session's Claude Code process stays alive for follow-ups and closes after 10 idle minutes; a later reply resumes it by session id | Avoids keeping one process per finished session while making replies feel instant. |
 | Persistence | Projects, positions and session metadata in `symphony-state.json`; each transcript in its own JSON file | Small and inspectable. Restarted sessions show as finished and resume on reply. |
+| Remote machines | The same Symphony app in remote mode on each machine, dialing out to the orchestrator over the local network | Every feature is reused as it is, since a remote machine is just another Symphony core reached over a link instead of IPC. Rejected: remote desktop (one machine at a time, no shared graph), SSH from the orchestrator (needs Remote Login on the Mac, Keychain logins are unreliable over SSH, and every feature would need a remote implementation), and Claude Code Remote Control (relays through Anthropic's servers to claude.ai and covers sessions only, no diffs, files or loops). |
+| Remote machine's own window | Read-only while the orchestrator is connected; Disconnect always works | Two people answering the same approvals would need conflict rules. The rule is enforced in the core, so a misbehaving UI cannot get around it. |
+| Usage | Shown for the orchestrator's own account only | Each machine signs in to its own Claude account; remote machines do not poll usage while linked. |
 
 ## Code map
 
@@ -363,7 +412,7 @@ Not verified on this machine:
 
 - **Remote orchestration on a real network**: mDNS discovery, a remote machine on another computer,
   Windows Firewall, sleep and wake, and Wi-Fi changes (the two-instance test runs on loopback).
-  This is phase 4 of `plan.md`.
+  These need two real machines.
 - **Remote terminals in the window.** Routing, the switch and the ID handling are covered by
   `npm test`; a remote terminal panel was not opened in the app.
 
@@ -394,7 +443,7 @@ All of this lives in `src/main/platform.ts` unless noted.
 - Dictation: `ensureMicAccess()` triggers the macOS microphone prompt (a packaged app also needs
   `NSMicrophoneUsageDescription` in its Info.plist); WebGPU is used on Apple GPUs, with the CPU
   fallback otherwise.
-- Remote orchestration (phase 4 of `plan.md`): the device key in the Keychain through `safeStorage`
+- Remote orchestration: the device key in the Keychain through `safeStorage`
   (`sealSecret()`), `scutil --get ComputerName` for the machine name, `pmset` for the battery
   (`readHealth()`), sleep and wake through `powerMonitor` (`onPower()`), `powerSaveBlocker`
   (`keepAwake()`), mDNS discovery of the orchestrator, and **Sign in to Claude** running the

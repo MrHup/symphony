@@ -74,6 +74,7 @@ export function ComposerBubble() {
   const models = useModels(machineId)
   const [model, setModel] = useState(defaultModel)
   const [effort, setEffort] = useState<EffortLevel | ''>('')
+  const optimize = useStore((s) => s.optimizePrompts)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const pasted = usePastedImages()
@@ -129,7 +130,7 @@ export function ComposerBubble() {
     setError(null)
     useStore.getState().setDefaultModel(model, machineId)
     try {
-      if (composer.kind === 'project') await api.startPipeline(composer.targetId, prompt, model, effort || undefined, pasted.images)
+      if (composer.kind === 'project') await api.startPipeline(composer.targetId, prompt, model, effort || undefined, pasted.images, optimize)
       else await api.startConfigSession(composer.targetId, prompt, model, effort || undefined, pasted.images)
       close()
     } catch (err) {
@@ -189,6 +190,12 @@ export function ComposerBubble() {
             useStore.getState().setModelEffort(model, v || null, machineId)
           }}
         />
+        {project && (
+          <label className="opt-toggle" title="Rewrite the prompt with /optimize-prompt before the session starts">
+            <input type="checkbox" checked={optimize} onChange={(e) => useStore.getState().setOptimizePrompts(e.target.checked)} />
+            Optimize prompt
+          </label>
+        )}
         <span className="spacer" />
         <kbd>{window.symphony.platform === 'darwin' ? '⌘' : 'Ctrl'}+Enter</kbd>
         <button className="btn primary" disabled={!text.trim() || busy || dictating} onClick={() => void submit()}>

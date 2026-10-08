@@ -59,7 +59,7 @@ export type Frame =
 export const READ_METHODS = new Set(['snapshot', 'transcript', 'gitStats', 'gitFileDiff', 'readSkill', 'readClaudeMd', 'asset', 'openAsset'])
 
 /** Never routed to a remote machine. */
-export const PC_ONLY = new Set(['refreshUsage', 'micAccess', 'refineDictation', 'dictationLanguage', 'moveNode'])
+export const PC_ONLY = new Set(['refreshUsage', 'micAccess', 'refineDictation', 'dictationLanguage', 'moveNode', 'setMachineColor', 'setOptimizePrompts', 'noteCreate', 'noteUpdate', 'noteDelete'])
 
 /**
  * Requests that name nothing a machine owns take an explicit, optional machineId at this argument

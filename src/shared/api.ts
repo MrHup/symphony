@@ -8,8 +8,10 @@ import type {
   GitFileStat,
   GitStats,
   MainEvent,
+  Note,
   Point,
   Project,
+  MachineColor,
   EffortLevel,
   ImageInput,
   LoopArtifact,
@@ -31,7 +33,14 @@ export interface InvokeApi {
   addProject(path?: string, machineId?: string): Promise<Project | null>
   removeProject(id: string): Promise<void>
   moveNode(id: string, position: Point): Promise<void>
-  startPipeline(projectId: string, prompt: string, model: string, effort?: EffortLevel, images?: ImageInput[]): Promise<void>
+  /** Glyph color for a machine's nodes ('local' for this one); null clears it. Kept on this machine. */
+  setMachineColor(machineId: string, color: MachineColor | null): Promise<void>
+  /** Sticky notes stay on this machine; moveNode moves them. */
+  noteCreate(position: Point): Promise<Note>
+  noteUpdate(id: string, text: string): Promise<void>
+  noteDelete(id: string): Promise<void>
+  /** optimize false: start the task session with the prompt as written, without /optimize-prompt. */
+  startPipeline(projectId: string, prompt: string, model: string, effort?: EffortLevel, images?: ImageInput[], optimize?: boolean): Promise<void>
   startConfigSession(targetId: string, prompt: string, model: string, effort?: EffortLevel, images?: ImageInput[]): Promise<void>
   sendMessage(sessionId: string, text: string, images?: ImageInput[]): Promise<void>
   stopSession(sessionId: string): Promise<void>
@@ -51,6 +60,8 @@ export interface InvokeApi {
   setDefaultModel(model: string, machineId?: string): Promise<void>
   /** Remember the effort for a model; null forgets it (back to the model's default). */
   setModelEffort(model: string, effort: EffortLevel | null, machineId?: string): Promise<void>
+  /** Remember the composer's "Optimize prompt" choice. */
+  setOptimizePrompts(on: boolean): Promise<void>
   refreshUsage(): Promise<void>
   /** Start a terminal in a project's folder, or the machine's home folder when projectId is null. */
   /** Returns the shell's display name, e.g. "PowerShell". */
@@ -113,6 +124,10 @@ export const INVOKE_METHODS: (keyof InvokeApi)[] = [
   'addProject',
   'removeProject',
   'moveNode',
+  'setMachineColor',
+  'noteCreate',
+  'noteUpdate',
+  'noteDelete',
   'startPipeline',
   'startConfigSession',
   'sendMessage',
@@ -130,6 +145,7 @@ export const INVOKE_METHODS: (keyof InvokeApi)[] = [
   'ghLogin',
   'setDefaultModel',
   'setModelEffort',
+  'setOptimizePrompts',
   'refreshUsage',
   'termStart',
   'termWrite',

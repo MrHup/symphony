@@ -17,6 +17,18 @@ export interface Project {
   machineId?: string
 }
 
+/** The colors a machine can pick for its nodes' glyphs (`.accent-*` in styles.css). */
+export const MACHINE_COLORS = ['blue', 'teal', 'green', 'violet', 'pink', 'sand'] as const
+export type MachineColor = (typeof MACHINE_COLORS)[number]
+
+/** A sticky note on this machine's board. */
+export interface Note {
+  id: string
+  /** Markdown. */
+  text: string
+  position: Point
+}
+
 /** task: a normal session. optimize: the /optimize-prompt step of the pipeline. config: edits a skill or MCP server. loop: one run of a loop step. */
 export type SessionKind = 'task' | 'optimize' | 'config' | 'loop'
 
@@ -280,6 +292,8 @@ export interface LoopInfo {
   /** `runs` at the last human decision; the run limit counts from here. */
   runsAtHuman?: number
   history: LoopHandoff[]
+  /** false: agent steps run with their own prompts. Unset (loops saved before the option) means on. */
+  optimize?: boolean
   activeSessionId?: string
   pausedReason?: string
   createdAt: number
@@ -292,6 +306,8 @@ export interface LoopDraft {
   name: string
   steps: LoopStep[]
   maxRuns: number
+  /** Improve agent prompts with /optimize-prompt when the loop starts. */
+  optimize: boolean
 }
 
 /** A routing decision made by you, on a human step or a paused loop. */
@@ -334,6 +350,10 @@ export interface AppSnapshot {
   defaultModel: string
   /** The effort last picked for each model. */
   efforts: Record<string, EffortLevel>
+  /** The composer's last "Optimize prompt" choice. */
+  optimizePrompts: boolean
+  /** Glyph color of each machine's nodes, by machine id ('local' for this one). Kept on this machine. */
+  machineColors: Record<string, MachineColor>
   usage: UsageInfo | null
   loops: LoopInfo[]
   autoApprove: boolean
@@ -343,6 +363,7 @@ export interface AppSnapshot {
   machinePosition: Point
   /** Set while another Symphony controls this one: the window is read-only. */
   control: ControlState | null
+  notes: Note[]
 }
 
 // ---------- remote machines ----------
@@ -469,6 +490,8 @@ export type MainEvent =
   | { type: 'machineRemoved'; id: string }
   | { type: 'control'; control: ControlState | null }
   | { type: 'remote'; status: RemoteStatus }
+  | { type: 'note'; note: Note }
+  | { type: 'noteRemoved'; id: string }
 
 export const USER_HUB_ID = 'hub:user'
 

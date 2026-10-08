@@ -99,10 +99,11 @@ function LoopEditor({ projectId, machineId, loop, onCreated }: { projectId: stri
   const [name, setName] = useState(loop?.name ?? '')
   const [steps, setSteps] = useState<LoopStep[]>(() => (loop ? structuredClone(loop.steps) : [newStep('agent', machineId), newStep('human', machineId)]))
   const [maxRuns, setMaxRuns] = useState(loop?.maxRuns ?? DEFAULT_MAX_RUNS)
+  const [optimize, setOptimize] = useState(loop?.optimize !== false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const draft: LoopDraft = { name, steps, maxRuns }
+  const draft: LoopDraft = { name, steps, maxRuns, optimize }
   const ready = steps.length > 0 && steps.every((s) => s.kind === 'human' || s.prompt.trim())
 
   const patch = (i: number, p: Partial<LoopStep>) => setSteps((cur) => cur.map((s, j) => (j === i ? { ...s, ...p } : s)))
@@ -165,7 +166,11 @@ function LoopEditor({ projectId, machineId, loop, onCreated }: { projectId: stri
       </div>
       {error && <p className="loop-error">{error}</p>}
       <div className="loop-foot">
-        <span className="hint">Agent prompts are improved with /optimize-prompt when the loop starts.</span>
+        <label className="opt-toggle">
+          <input type="checkbox" checked={optimize} onChange={(e) => setOptimize(e.target.checked)} />
+          Optimize prompts
+        </label>
+        <span className="hint">{optimize ? 'Agent prompts are improved with /optimize-prompt when the loop starts.' : 'Agent steps run with their prompts as written.'}</span>
         <button className="btn" disabled={busy || !ready} onClick={() => void save()}>
           Save
         </button>
@@ -295,6 +300,7 @@ function StepRow({ loop, step, index }: { loop: LoopInfo; step: LoopStep; index:
   const model = useModelLabel(step.model ?? '', loop.machineId)
   const current = loop.current === index
   const runs = loop.history.filter((h) => h.fromStep === index && h.by === 'agent').length + (current && loop.state === 'running' ? 1 : 0)
+  const optimized = loop.optimize !== false ? step.optimized : undefined
   return (
     <div className={`step-row${current ? ' is-current' : ''}`}>
       <button className="step-row-head" onClick={() => setOpen((o) => !o)}>
@@ -304,15 +310,15 @@ function StepRow({ loop, step, index }: { loop: LoopInfo; step: LoopStep; index:
         <span className="step-row-meta">
           {step.kind === 'human' ? 'human review' : model}
           {runs > 0 && ` · ${runs} ${runs === 1 ? 'run' : 'runs'}`}
-          {step.optimized && ' · improved'}
+          {optimized && ' · improved'}
         </span>
       </button>
       {open && (
         <div className="step-row-detail">
-          {step.optimized ? (
+          {optimized ? (
             <>
               <div className="detail-label">Improved prompt</div>
-              <div className="code-block">{step.optimized}</div>
+              <div className="code-block">{optimized}</div>
               <div className="detail-label">Your prompt</div>
               <div className="code-block">{step.prompt}</div>
             </>

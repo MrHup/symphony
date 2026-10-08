@@ -8,7 +8,7 @@ import { basename, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { InvokeApi } from '@shared/api'
 import { READ_METHODS } from '@shared/remote'
-import { USER_HUB_ID, type AppSnapshot, type ControlState, type EffortLevel, type ImageInput, type UsageInfo, type GhAccounts, type GitStats, type McpInfo, type MainEvent, type ModelOption, type Point, type Project, type SkillInfo } from '@shared/types'
+import { USER_HUB_ID, type AppSnapshot, type ControlState, type EffortLevel, type ImageInput, type UsageInfo, type GhAccounts, type GitStats, type McpInfo, type MainEvent, type ModelOption, type Note, type Point, type Project, type SkillInfo } from '@shared/types'
 import { dictationLanguage, inspect, isProjectScoped, projectSkills, readClaudeMd, readUsage, toMcpInfo, userSkills, writeClaudeMd } from './claudeConfig'
 import { TerminalManager } from './terminals'
 import { LoopManager } from './loops'
@@ -155,12 +155,15 @@ export class SymphonyCore {
       models: this.models,
       defaultModel: s.defaultModel,
       efforts: s.efforts,
+      optimizePrompts: s.optimizePrompts,
+      machineColors: s.machineColors,
       usage: this.usage,
       loops: this.loops.list(),
       autoApprove: this.autoApprove,
       machines: [],
       machinePosition: s.machinePosition ?? { x: s.hubPosition.x, y: s.hubPosition.y - 200 },
-      control: this.control
+      control: this.control,
+      notes: s.notes
     }
   }
 
@@ -335,12 +338,18 @@ export class SymphonyCore {
     return effort && (!known || known.efforts.includes(effort)) ? effort : undefined
   }
 
-  private async startPipeline(projectId: string, prompt: string, model: string, requested?: EffortLevel, images: ImageInput[] = []): Promise<void> {
+  private async startPipeline(projectId: string, prompt: string, model: string, requested?: EffortLevel, images: ImageInput[] = [], optimize?: boolean): Promise<void> {
     const { sessions } = this
     const effort = this.effortFor(model, requested)
     const p = this.project(projectId)
     const { identity, env } = await this.identityFor(p.path)
-    const optimize = sessions.start({
+    const startTask = (text: string) => {
+      const task = sessions.start({ kind: 'task', anchorId: p.id, projectId: p.id, cwd: p.path, prompt: text, images, model, effort, title: text, identity, env })
+      this.emit({ type: 'focus', sessionId: task.id })
+      return task
+    }
+    if (optimize === false) return void startTask(prompt)
+    const optimizer = sessions.start({
       kind: 'optimize',
       anchorId: p.id,
       projectId: p.id,
@@ -354,26 +363,13 @@ export class SymphonyCore {
       onResult: (reply, isError) => {
         if (isError) return // leave the failed optimize node in place so the user can open it
         const optimized = extractOptimizedPrompt(reply)
-        const task = sessions.start({
-          kind: 'task',
-          anchorId: p.id,
-          projectId: p.id,
-          cwd: p.path,
-          prompt: optimized ?? prompt,
-          images,
-          model,
-          effort,
-          title: optimized ?? prompt,
-          identity,
-          env
-        })
+        const task = startTask(optimized ?? prompt)
         if (!optimized) {
           // Fall back to the original wording rather than stalling the pipeline; say so in the new session.
           sessions.notice(task.id, 'The optimizer reply had no "## Optimized prompt" block, so your original prompt was sent.')
         }
-        this.emit({ type: 'focus', sessionId: task.id })
-        sessions.markHandedOff(optimize.id)
-        setTimeout(() => sessions.dismiss(optimize.id), OPTIMIZE_LINGER_MS)
+        sessions.markHandedOff(optimizer.id)
+        setTimeout(() => sessions.dismiss(optimizer.id), OPTIMIZE_LINGER_MS)
       }
     })
   }
@@ -458,7 +454,33 @@ export class SymphonyCore {
         if (s) s.position = position
         const l = loops.list().find((x) => x.id === id)
         if (l) l.position = position
+        const n = this.state.notes.find((x) => x.id === id)
+        if (n) n.position = position
         this.persist()
+      },
+      setMachineColor: async (machineId, color) => {
+        if (color) this.state.machineColors[machineId] = color
+        else delete this.state.machineColors[machineId]
+        saveState(this.state)
+      },
+      noteCreate: async (position) => {
+        const n: Note = { id: randomUUID(), text: '', position }
+        this.state.notes.push(n)
+        saveState(this.state)
+        this.emit({ type: 'note', note: n })
+        return n
+      },
+      noteUpdate: async (id, text) => {
+        const n = this.state.notes.find((x) => x.id === id)
+        if (!n) throw new Error('Unknown note')
+        n.text = text
+        saveState(this.state)
+        this.emit({ type: 'note', note: n })
+      },
+      noteDelete: async (id) => {
+        this.state.notes = this.state.notes.filter((x) => x.id !== id)
+        saveState(this.state)
+        this.emit({ type: 'noteRemoved', id })
       },
       startPipeline: (...a) => this.startPipeline(...a),
       startConfigSession: (...a) => this.startConfigSession(...a),
@@ -498,6 +520,10 @@ export class SymphonyCore {
       setModelEffort: async (model, effort) => {
         if (effort) this.state.efforts[model] = effort
         else delete this.state.efforts[model]
+        saveState(this.state)
+      },
+      setOptimizePrompts: async (on) => {
+        this.state.optimizePrompts = on
         saveState(this.state)
       },
       refreshUsage: () => this.refreshUsage(),

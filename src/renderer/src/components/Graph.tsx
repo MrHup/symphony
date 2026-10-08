@@ -38,6 +38,11 @@ function layout(s: State, moved: Record<string, Point>): { nodes: Node[]; edges:
   const shown = (status: NodeStatus, offline: boolean): NodeStatus => (offline ? (status === 'finished' ? 'finished' : 'idle') : status)
   const edge = (source: string, target: string, signal: boolean, faded = false, offline = false) =>
     edges.push({ id: `${source}->${target}`, source, target, className: offline ? 'edge-offline' : signal ? 'edge-signal' : faded ? 'edge-faded' : undefined, selectable: false, focusable: false })
+  // A machine's color tints the glyphs of everything on it (the signal shapes keep their color).
+  const tint = (machineId?: string) => {
+    const color = s.machineColors[machineId ?? 'local']
+    return color ? `accent-${color}` : undefined
+  }
 
   // One root per machine once there are remote machines: this one, then each remote machine, with its ~/.claude hub under it.
   const hubIds = new Set<string>()
@@ -48,14 +53,14 @@ function layout(s: State, moved: Record<string, Point>): { nodes: Node[]; edges:
     const lp = at(LOCAL_MACHINE_NODE, s.machinePosition)
     pos.set(LOCAL_MACHINE_NODE, lp)
     machineIds.add(LOCAL_MACHINE_NODE)
-    nodes.push({ id: LOCAL_MACHINE_NODE, type: 'machine', position: lp, data: { local: true } })
+    nodes.push({ id: LOCAL_MACHINE_NODE, type: 'machine', position: lp, className: tint(), data: { local: true } })
   }
   for (const m of remote) {
     const id = machineNodeId(m.id)
     const mp = at(id, m.position)
     pos.set(id, mp)
     machineIds.add(id)
-    nodes.push({ id, type: 'machine', position: mp, data: { machine: m } })
+    nodes.push({ id, type: 'machine', position: mp, className: tint(m.id), data: { machine: m } })
     // A machine that only asks to pair has no hub yet.
     if (m.status !== 'pairing' || Object.values(s.projects).some((p) => p.machineId === m.id)) roots.push({ machineId: m.id, hubPos: m.hubPosition })
   }
@@ -70,7 +75,7 @@ function layout(s: State, moved: Record<string, Point>): { nodes: Node[]; edges:
     const open = !s.hubClosed[hubId]
     const userSkills = s.skills.filter((k) => !k.projectId && k.machineId === root.machineId)
     const userMcp = s.mcp.filter((m) => !m.projectId && m.machineId === root.machineId)
-    nodes.push({ id: hubId, type: 'hub', position: hub, data: { open, skills: userSkills.length, mcp: userMcp.length, machineId: root.machineId, offline } })
+    nodes.push({ id: hubId, type: 'hub', position: hub, className: tint(root.machineId), data: { open, skills: userSkills.length, mcp: userMcp.length, machineId: root.machineId, offline } })
     if (remote.length) edge(root.machineId ? machineNodeId(root.machineId) : LOCAL_MACHINE_NODE, hubId, false, true, offline)
     const rows = Math.min(SKILL_ROWS, Math.max(1, userSkills.length))
     const cols = Math.ceil(userSkills.length / SKILL_ROWS)
@@ -81,13 +86,13 @@ function layout(s: State, moved: Record<string, Point>): { nodes: Node[]; edges:
       const r = i % SKILL_ROWS
       const p = at(k.id, { x: hub.x - 240 - c * SKILL_COL_W, y: hub.y + 6 + (r - (rows - 1) / 2) * SKILL_DY })
       pos.set(k.id, p)
-      nodes.push({ id: k.id, type: 'skill', position: p, data: { skill: k, offline } })
+      nodes.push({ id: k.id, type: 'skill', position: p, className: tint(root.machineId), data: { skill: k, offline } })
       edge(hubId, k.id, false, true, offline)
     })
     userMcp.forEach((m, i) => {
       const p = at(m.id, { x: hub.x + 250, y: hub.y + 64 + i * SKILL_DY })
       pos.set(m.id, p)
-      nodes.push({ id: m.id, type: 'mcp', position: p, data: { mcp: m, offline } })
+      nodes.push({ id: m.id, type: 'mcp', position: p, className: tint(root.machineId), data: { mcp: m, offline } })
       edge(hubId, m.id, needsUser(m.status === 'needs-auth' ? 'input' : 'idle'), true, offline)
     })
   }
@@ -102,10 +107,12 @@ function layout(s: State, moved: Record<string, Point>): { nodes: Node[]; edges:
     const loopStatuses = myLoops.map((l) => loopStatus(l, s.sessions)).filter((st) => st !== 'idle')
     const status = shown(rollup([...mine.map((x) => x.status), ...loopStatuses]), offline)
     const busy = mine.some((x) => x.status !== 'finished') || myLoops.some((l) => ['optimizing', 'running', 'waiting', 'paused'].includes(l.state))
+    const cls = tint(project.machineId)
     nodes.push({
       id: project.id,
       type: 'project',
       position: p,
+      className: cls,
       data: { project, status, stats: s.git[project.id], busy, offline, machine: project.machineId ? s.machines[project.machineId] : undefined }
     })
     if (remote.length) edge(project.machineId ? machineNodeId(project.machineId) : LOCAL_MACHINE_NODE, project.id, false, true, offline)
@@ -114,7 +121,7 @@ function layout(s: State, moved: Record<string, Point>): { nodes: Node[]; edges:
       const xp = at(x.id, { x: p.x + 44, y: p.y + 104 + i * SKILL_DY })
       pos.set(x.id, xp)
       const isMcp = 'tools' in x
-      nodes.push(isMcp ? { id: x.id, type: 'mcp', position: xp, data: { mcp: x, offline } } : { id: x.id, type: 'skill', position: xp, data: { skill: x, offline } })
+      nodes.push(isMcp ? { id: x.id, type: 'mcp', position: xp, className: cls, data: { mcp: x, offline } } : { id: x.id, type: 'skill', position: xp, className: cls, data: { skill: x, offline } })
       edge(project.id, x.id, false, true, offline)
     })
     // Loops sit below the project, under its own skills and MCP servers, each with room for the
@@ -126,7 +133,7 @@ function layout(s: State, moved: Record<string, Point>): { nodes: Node[]; edges:
       loopY += LOOP_DY + count * LOOP_SESSION_DY
       pos.set(l.id, lp)
       const st = shown(loopStatus(l, s.sessions), offline)
-      nodes.push({ id: l.id, type: 'loop', position: lp, data: { loop: l, status: st, offline } })
+      nodes.push({ id: l.id, type: 'loop', position: lp, className: cls, data: { loop: l, status: st, offline } })
       edge(project.id, l.id, needsUser(st), st === 'finished' || st === 'idle', offline)
     })
   }
@@ -162,7 +169,7 @@ function layout(s: State, moved: Record<string, Point>): { nodes: Node[]; edges:
     // Only a handed-off optimize step fades away; a failed or refused one stays so it can be opened.
     const leaving = x.kind === 'optimize' && !!x.handedOff
     const session = offline ? { ...x, status: shown(x.status, true) } : x
-    nodes.push({ id: x.id, type: 'session', position: sp, data: { session, leaving, offline } })
+    nodes.push({ id: x.id, type: 'session', position: sp, className: tint(x.machineId), data: { session, leaving, offline } })
     edge(anchor, x.id, needsUser(session.status), session.status === 'finished', offline)
   }
 
@@ -173,14 +180,18 @@ function layout(s: State, moved: Record<string, Point>): { nodes: Node[]; edges:
     const sp = pos.get(sessionId)
     if (!sp) continue
     const offline = off(s.sessions[sessionId]?.machineId)
+    const cls = tint(s.sessions[sessionId]?.machineId)
     list.forEach((ag, j) => {
       const p = at(ag.id, { x: sp.x + AGENT_DX, y: sp.y + 4 + (j - (list.length - 1) / 2) * AGENT_DY })
       pos.set(ag.id, p)
       const agent = offline ? { ...ag, status: shown(ag.status, true) } : ag
-      nodes.push({ id: ag.id, type: 'agent', position: p, data: { agent, offline } })
+      nodes.push({ id: ag.id, type: 'agent', position: p, className: cls, data: { agent, offline } })
       edge(sessionId, ag.id, needsUser(agent.status), agent.status === 'finished', offline)
     })
   }
+
+  // Sticky notes, drawn over everything else.
+  for (const n of Object.values(s.notes)) nodes.push({ id: n.id, type: 'note', position: at(n.id, n.position), data: { note: n } })
 
   // Leave from the side that faces the child, so edges never cut back across their own node.
   const mcpIds = new Set(s.mcp.map((m) => m.id))
@@ -206,7 +217,7 @@ function layout(s: State, moved: Record<string, Point>): { nodes: Node[]; edges:
 }
 
 const PERSISTED = (id: string, s: State) =>
-  id === USER_HUB_ID || id.startsWith('machine:') || splitMachine(id)?.id === USER_HUB_ID || !!s.projects[id] || !!s.sessions[id] || !!s.loops[id]
+  id === USER_HUB_ID || id.startsWith('machine:') || splitMachine(id)?.id === USER_HUB_ID || !!s.projects[id] || !!s.sessions[id] || !!s.loops[id] || !!s.notes[id]
 
 export function Graph() {
   const state = useStore()
@@ -215,7 +226,7 @@ export function Graph() {
   const moved = useRef<Record<string, Point>>({})
   const [tick, setTick] = useState(0)
   const raf = useRef(0)
-  const { fitView, getNodes, getViewport } = useReactFlow()
+  const { fitView, getNodes, getViewport, screenToFlowPosition } = useReactFlow()
 
   // Fitting before React Flow has measured newly added nodes frames only part of the graph, so wait for sizes.
   const fitAll = useCallback(() => {
@@ -263,7 +274,7 @@ export function Graph() {
       })
     })
     // Recompute on any state change or drag movement.
-  }, [state.projects, state.sessions, state.agents, state.skills, state.mcp, state.git, state.hubPosition, state.hubClosed, state.loops, state.machines, state.machinePosition, tick])
+  }, [state.projects, state.sessions, state.agents, state.skills, state.mcp, state.git, state.hubPosition, state.hubClosed, state.loops, state.machines, state.machinePosition, state.machineColors, state.notes, tick])
 
   const onNodesChange = useCallback((changes: NodeChange[]) => {
     let movedAny = false
@@ -312,14 +323,33 @@ export function Graph() {
     const s = useStore.getState()
     if (node.type === 'session') return s.openPanel('session', node.id)
     if (node.type === 'loop') return s.openPanel('loop', node.id)
+    const el = (event.target as Element).closest('.react-flow__node')
+    const rect = el?.getBoundingClientRect()
+    const at = { left: rect?.left ?? event.clientX, right: rect?.right ?? event.clientX, top: rect?.top ?? event.clientY }
+    // A machine's color is kept here, so it can be changed while that machine is offline.
+    if (node.type === 'machine') {
+      const machineId = node.id.slice('machine:'.length)
+      if (s.control || s.machines[machineId]?.status === 'pairing') return
+      return s.setColorMenu({ machineId, ...at })
+    }
     if (node.type !== 'project' && node.type !== 'skill' && node.type !== 'mcp') return
     // No prompt bubble while the window is read-only or the node's machine is offline.
     const machineId = s.projects[node.id]?.machineId ?? [...s.skills, ...s.mcp].find((x) => x.id === node.id)?.machineId
     if (lockReason(s, machineId)) return
-    const el = (event.target as Element).closest('.react-flow__node')
-    const rect = el?.getBoundingClientRect()
-    s.setComposer({ kind: node.type, targetId: node.id, left: rect?.left ?? event.clientX, right: rect?.right ?? event.clientX, top: rect?.top ?? event.clientY })
+    s.setComposer({ kind: node.type, targetId: node.id, ...at })
   }, [])
+
+  // Right-clicking empty canvas leaves a sticky note there.
+  const onPaneContextMenu = useCallback(
+    (event: React.MouseEvent | MouseEvent) => {
+      event.preventDefault()
+      const s = useStore.getState()
+      s.setComposer(null)
+      if (lockReason(s)) return
+      void api.noteCreate(screenToFlowPosition({ x: event.clientX, y: event.clientY }))
+    },
+    [screenToFlowPosition]
+  )
 
   return (
     <div className="canvas">
@@ -332,7 +362,7 @@ export function Graph() {
         onNodeClick={onNodeClick}
         onNodeContextMenu={onNodeContextMenu}
         nodesDraggable={!state.control}
-        onPaneContextMenu={(e) => e.preventDefault()}
+        onPaneContextMenu={onPaneContextMenu}
         onPaneClick={() => useStore.getState().setComposer(null)}
         nodesConnectable={false}
         edgesFocusable={false}

@@ -3,7 +3,7 @@
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs'
 import { rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import type { EffortLevel, LoopInfo, Point, Project, SessionInfo, TranscriptItem } from '@shared/types'
+import type { EffortLevel, LoopInfo, Note, MachineColor, Point, Project, SessionInfo, TranscriptItem } from '@shared/types'
 
 export interface PersistedState {
   projects: Project[]
@@ -11,11 +11,15 @@ export interface PersistedState {
   hubPosition: Point
   defaultModel: string
   efforts: Record<string, EffortLevel>
+  optimizePrompts: boolean
   loops: LoopInfo[]
+  notes: Note[]
   /** This machine's own node, shown once remote machines exist. */
   machinePosition?: Point
   /** Positions of remote nodes on this machine's graph, by machine id, then node id. */
   remoteLayout: Record<string, Record<string, Point>>
+  /** Glyph colors of machines on this machine's graph, by machine id ('local' for this one). */
+  machineColors: Record<string, MachineColor>
 }
 
 let dataDir = ''
@@ -34,7 +38,7 @@ const transcriptDir = () => join(dir(), 'transcripts')
 const transcriptFile = (id: string) => join(transcriptDir(), `${id.replace(/[^\w-]/g, '_')}.json`)
 
 export function loadState(): PersistedState {
-  const fallback: PersistedState = { projects: [], sessions: [], hubPosition: { x: -420, y: 0 }, defaultModel: 'opus', efforts: {}, loops: [], remoteLayout: {} }
+  const fallback: PersistedState = { projects: [], sessions: [], hubPosition: { x: -420, y: 0 }, defaultModel: 'opus', efforts: {}, optimizePrompts: true, loops: [], notes: [], remoteLayout: {}, machineColors: {} }
   try {
     return { ...fallback, ...JSON.parse(readFileSync(stateFile(), 'utf8')) }
   } catch {

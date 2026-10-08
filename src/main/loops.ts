@@ -2,8 +2,8 @@
 //
 // Each agent step runs as its own session. When it finishes, it decides where the loop goes by
 // calling the loop_route tool (forward to the next step, or back to an earlier one) and hands over
-// a summary plus artifacts. Human steps wait for the user, who decides in the loop panel. Prompts
-// are improved with /optimize-prompt once, when the loop starts, and reused until a step changes.
+// a summary plus artifacts. Human steps wait for the user, who decides in the loop panel. Unless the
+// loop turns it off, prompts are improved with /optimize-prompt when the loop starts, and reused until a step changes.
 import { createSdkMcpServer, tool, type McpSdkServerConfigWithInstance } from '@anthropic-ai/claude-agent-sdk'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
@@ -133,6 +133,7 @@ export class LoopManager {
     l.current = null
     l.pausedReason = undefined
     for (const s of this.d.sessions.list()) if (s.loopId === id) this.d.sessions.archive(s.id)
+    if (l.optimize === false) return this.runStep(l, 0)
     await this.optimize(l)
     if (l.state === 'optimizing') await this.runStep(l, 0)
   }
@@ -382,7 +383,7 @@ export class LoopManager {
   }
 }
 
-function clean(draft: LoopDraft): Pick<LoopInfo, 'name' | 'steps' | 'maxRuns'> {
+function clean(draft: LoopDraft): Pick<LoopInfo, 'name' | 'steps' | 'maxRuns' | 'optimize'> {
   const steps = draft.steps
     .filter((s) => s.prompt.trim() || s.kind === 'human')
     .map((s, i) => ({
@@ -395,7 +396,8 @@ function clean(draft: LoopDraft): Pick<LoopInfo, 'name' | 'steps' | 'maxRuns'> {
   return {
     name: draft.name.trim() || 'Loop',
     steps,
-    maxRuns: Math.max(1, Math.min(100, Math.round(draft.maxRuns || DEFAULT_MAX_RUNS)))
+    maxRuns: Math.max(1, Math.min(100, Math.round(draft.maxRuns || DEFAULT_MAX_RUNS))),
+    optimize: draft.optimize !== false
   }
 }
 
@@ -425,7 +427,7 @@ export function buildStepPrompt(l: LoopInfo, index: number, handoff?: LoopHandof
     const files = handoff.artifacts.length ? `\n\nArtifacts:\n${artifactLines(handoff.artifacts)}` : ''
     parts.push(`<handoff>\n${why}\n\n${handoff.summary}${files}\n</handoff>`)
   }
-  parts.push(`<task>\n${step.optimized ?? step.prompt}\n</task>`)
+  parts.push(`<task>\n${l.optimize === false ? step.prompt : (step.optimized ?? step.prompt)}\n</task>`)
   const nextStep = index + 1 < n ? l.steps[index + 1] : null
   const forward = nextStep
     ? `next "forward" hands your work to ${stepLabel(l, index + 1)}${nextStep.kind === 'human' ? ', a human review: list in artifacts every file or link the reviewer should open, and say in summary what to check' : ''}.`

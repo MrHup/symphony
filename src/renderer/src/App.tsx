@@ -1,6 +1,7 @@
 import { ReactFlowProvider } from '@xyflow/react'
 import { useEffect, useState } from 'react'
 import './monaco'
+import { ColorMenu } from './components/ColorMenu'
 import { ComposerBubble } from './components/Composer'
 import { ControlBanner } from './components/ControlBanner'
 import { Lightbox } from './components/Files'
@@ -204,6 +205,7 @@ export function App() {
         <PanelFor key={p.id} panel={p} />
       ))}
       <ComposerBubble />
+      <ColorMenu />
       <Lightbox />
       {dragging && <div className="drop-target" />}
     </ReactFlowProvider>

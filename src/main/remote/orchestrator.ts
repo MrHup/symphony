@@ -789,6 +789,7 @@ export class Orchestrator {
     deleteJson(remoteFile(id))
     this.dropOwners(id, () => true)
     delete this.core.state.remoteLayout[id]
+    delete this.core.state.machineColors[id]
     this.core.persist()
     this.emit({ type: 'machineRemoved', id })
     this.statusChanged()

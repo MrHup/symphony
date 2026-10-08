@@ -11,11 +11,13 @@ import {
   type GitStats,
   type LoginPrompt,
   type LoopInfo,
+  type MachineColor,
   type MachineState,
   type MainEvent,
   type McpInfo,
   type ModelOption,
   type NodeStatus,
+  type Note,
   type Point,
   type Project,
   type RemoteStatus,
@@ -64,12 +66,17 @@ interface State {
   models: ModelOption[]
   defaultModel: string
   efforts: Record<string, EffortLevel>
+  /** The composer's last "Optimize prompt" choice. */
+  optimizePrompts: boolean
+  /** Glyph color of each machine's nodes, by machine id ('local' for this one). */
+  machineColors: Record<string, MachineColor>
   usage: UsageInfo | null
   loops: Record<string, LoopInfo>
   autoApprove: boolean
   /** Remote machines (on an orchestrator). */
   machines: Record<string, MachineState>
   machinePosition: Point
+  notes: Record<string, Note>
   /** Set while another machine controls this one: the window is read-only. */
   control: ControlState | null
   remote: RemoteStatus | null
@@ -80,6 +87,8 @@ interface State {
   logins: Record<string, LoginPrompt>
   panels: Panel[]
   composer: Composer | null
+  /** The color picker of a machine node: its id ('local' for this one) and screen rectangle. */
+  colorMenu: { machineId: string; left: number; right: number; top: number } | null
   /** The image viewer: images of one session or loop, and the one shown. */
   lightbox: { ownerId: string; files: AssetRef[]; index: number } | null
   apply(e: MainEvent): void
@@ -89,10 +98,13 @@ interface State {
   raisePanel(id: string): void
   updatePanel(id: string, patch: Partial<Panel>): void
   setComposer(c: Composer | null): void
+  setColorMenu(m: State['colorMenu']): void
+  setMachineColor(machineId: string, color: MachineColor | null): void
   setLightbox(l: State['lightbox']): void
   toggleHub(id: string): void
   setDefaultModel(model: string, machineId?: string): void
   setModelEffort(model: string, effort: EffortLevel | null, machineId?: string): void
+  setOptimizePrompts(on: boolean): void
   /** Open a new terminal in a project's folder, or a machine's home folder when projectId is null. */
   openTerminal(projectId: string | null, machineId?: string): void
   /** Open the loop editor for a new loop on a project. */
@@ -176,11 +188,14 @@ export const useStore = create<State>((set, get) => ({
   models: [],
   defaultModel: 'opus',
   efforts: {},
+  optimizePrompts: true,
+  machineColors: {},
   usage: null,
   loops: {},
   autoApprove: false,
   machines: {},
   machinePosition: { x: -420, y: -200 },
+  notes: {},
   control: null,
   remote: null,
   waitingSince: {},
@@ -188,6 +203,7 @@ export const useStore = create<State>((set, get) => ({
   logins: {},
   panels: [],
   composer: null,
+  colorMenu: null,
   lightbox: null,
 
   load(s) {
@@ -209,11 +225,14 @@ export const useStore = create<State>((set, get) => ({
       models: s.models,
       defaultModel: s.defaultModel,
       efforts: s.efforts ?? {},
+      optimizePrompts: s.optimizePrompts !== false,
+      machineColors: s.machineColors ?? {},
       usage: s.usage,
       loops: byId(s.loops ?? []),
       autoApprove: !!s.autoApprove,
       machines: byId(s.machines ?? []),
       machinePosition: s.machinePosition ?? { x: s.hubPosition.x, y: s.hubPosition.y - 200 },
+      notes: byId(s.notes ?? []),
       waitingSince
     })
     applyControl(s.control ?? null)
@@ -365,6 +384,12 @@ export const useStore = create<State>((set, get) => ({
       case 'remote':
         set({ remote: e.status })
         break
+      case 'note':
+        set((s) => ({ notes: { ...s.notes, [e.note.id]: e.note } }))
+        break
+      case 'noteRemoved':
+        set((s) => ({ notes: omit(s.notes, e.id) }))
+        break
     }
   },
 
@@ -396,7 +421,21 @@ export const useStore = create<State>((set, get) => ({
   },
 
   setComposer(c) {
-    set({ composer: c })
+    set({ composer: c, colorMenu: null })
+  },
+
+  setColorMenu(m) {
+    set({ colorMenu: m, composer: null })
+  },
+
+  setMachineColor(machineId, color) {
+    set((s) => {
+      const machineColors = { ...s.machineColors }
+      if (color) machineColors[machineId] = color
+      else delete machineColors[machineId]
+      return { machineColors }
+    })
+    void api.setMachineColor(machineId, color)
   },
 
   setLightbox(l) {
@@ -435,6 +474,11 @@ export const useStore = create<State>((set, get) => ({
     if (m) set((s) => ({ machines: { ...s.machines, [m.id]: { ...m, efforts: update(m.efforts) } } }))
     else set((s) => ({ efforts: update(s.efforts) }))
     void api.setModelEffort(model, effort, machineId)
+  },
+
+  setOptimizePrompts(on) {
+    set({ optimizePrompts: on })
+    void api.setOptimizePrompts(on)
   },
 
   async loadTranscript(sessionId, force) {

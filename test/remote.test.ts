@@ -64,12 +64,15 @@ function emptySnapshot(): AppSnapshot {
     models: [{ value: 'opus', label: 'Opus', efforts: [] }],
     defaultModel: 'opus',
     efforts: {},
+    optimizePrompts: true,
+    machineColors: {},
     usage: null,
     loops: [],
     autoApprove: false,
     machines: [],
     machinePosition: { x: -420, y: -200 },
-    control: null
+    control: null,
+    notes: []
   }
 }
 
@@ -86,7 +89,7 @@ class FakeCore {
   /** Requests that wait until released. */
   holds = new Map<string, () => void>()
   holdMethods = new Set<string>()
-  state = { projects: [] as Project[], sessions: [], hubPosition: { x: -420, y: 0 }, defaultModel: 'opus', efforts: {}, loops: [], remoteLayout: {} as Record<string, Record<string, { x: number; y: number }>>, machinePosition: undefined as { x: number; y: number } | undefined }
+  state = { projects: [] as Project[], sessions: [], hubPosition: { x: -420, y: 0 }, defaultModel: 'opus', efforts: {}, loops: [], remoteLayout: {} as Record<string, Record<string, { x: number; y: number }>>, machineColors: {}, machinePosition: undefined as { x: number; y: number } | undefined }
   sessions = { get: (id: string) => this.snap.sessions.find((s) => s.id === id) }
   loops = { list: () => this.snap.loops }
   terminals = { pause: () => undefined, resume: () => undefined }

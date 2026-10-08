@@ -2206,13 +2206,19 @@ div.artifact .artifact-label {
   white-space: nowrap;
   min-width: 0;
 }
+/* One definite cell, so the image's max-width/max-height can resolve against it (an implicit auto
+   track grows to the image instead, and the stage clips it). Auto margins center the image but
+   collapse to 0 when it is larger, so at actual size it overflows right/down where it can scroll. */
 .lightbox-stage {
   flex: 1;
   min-height: 0;
   display: grid;
-  place-items: center;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
   padding: 24px 64px;
   overflow: hidden;
+}
+.lightbox-stage > * {
+  margin: auto;
 }
 .lightbox-stage img {
   max-width: 100%;
@@ -2223,7 +2229,6 @@ div.artifact .artifact-label {
 }
 .lightbox-stage.is-actual {
   overflow: auto;
-  place-items: start center;
 }
 .lightbox-stage.is-actual img {
   max-width: none;

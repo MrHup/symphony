@@ -17,12 +17,16 @@ import { getAccounts, login, resolveIdentity } from './github'
 import { extractOptimizedPrompt, OPTIMIZE_LINGER_MS, optimizeCommand } from './pipeline'
 import { refineDictation } from './dictation'
 import { claudeExecutable, claudeJsonPath, home, samePath, type Adapters } from './platform'
+import { AssetStore, assetIdsOfLoop } from './assets'
 import { SessionManager } from './sessions'
-import { loadState, saveState, type PersistedState } from './store'
+import { dataPath, loadState, saveState, type PersistedState } from './store'
 
 const GIT_POLL_MS = 4000
 const CONFIG_POLL_MS = 3 * 60_000
 const USAGE_POLL_MS = 2 * 60_000
+const RELEASE_DELAY_MS = 2000
+const STARTUP_SWEEP_DELAY_MS = 60_000
+const STARTUP_SWEEP_MIN_AGE_MS = 10 * 60_000
 
 /** The requests the core serves: the window's API without remote orchestration (handled around it). */
 export type CoreApi = Omit<InvokeApi, `remote${string}`>
@@ -33,6 +37,8 @@ export class SymphonyCore {
   readonly sessions: SessionManager
   readonly terminals: TerminalManager
   readonly loops: LoopManager
+  /** Files shown in sessions and handed over between loop steps (and, on an orchestrator, fetched from remote machines). */
+  readonly assets: AssetStore
   readonly handlers: CoreApi
   /** Set while another Symphony controls this machine; the local window is then read-only. */
   control: ControlState | null = null
@@ -51,9 +57,15 @@ export class SymphonyCore {
   private usageInFlight: Promise<void> | null = null
   private gitLoopRunning = false
   private timers: NodeJS.Timeout[] = []
+  private released = new Set<string>()
+  private releaseTimer: NodeJS.Timeout | undefined
+  /** Stored files something outside the core needs (an orchestrator's copies of remote files). */
+  extraFileRefs: () => Iterable<string> = () => []
 
   constructor(private adapters: Adapters) {
-    this.sessions = new SessionManager((e) => this.emit(e), () => this.persist())
+    this.assets = new AssetStore(() => dataPath('assets'), adapters.thumbnail)
+    this.sessions = new SessionManager((e) => this.emit(e), () => this.persist(), this.assets)
+    this.sessions.onFilesReleased = (ids) => this.releaseFiles(ids)
     this.terminals = new TerminalManager((e) => this.emit(e))
     this.loops = new LoopManager({
       sessions: this.sessions,
@@ -61,7 +73,9 @@ export class SymphonyCore {
       persist: () => this.persist(),
       project: (id) => this.project(id),
       identityFor: (cwd) => this.identityFor(cwd),
-      defaultModel: () => this.state.defaultModel
+      defaultModel: () => this.state.defaultModel,
+      assets: this.assets,
+      releaseFiles: (ids) => this.releaseFiles(ids)
     })
     this.handlers = this.createHandlers()
   }
@@ -76,6 +90,8 @@ export class SymphonyCore {
     void this.refreshAllConfig()
     void this.refreshUsage()
     this.timers.push(
+      // A late sweep catches files left behind (say, by a crash between deleting a session and its files).
+      setTimeout(() => this.sweepFiles(this.assets.ids(), STARTUP_SWEEP_MIN_AGE_MS), STARTUP_SWEEP_DELAY_MS),
       setInterval(() => void this.gitLoop(), GIT_POLL_MS),
       setInterval(() => this.usagePolling && void this.refreshUsage(), USAGE_POLL_MS),
       setInterval(() => void this.refreshAllConfig(), CONFIG_POLL_MS)
@@ -84,6 +100,7 @@ export class SymphonyCore {
 
   shutdown(): void {
     for (const t of this.timers) clearInterval(t)
+    clearTimeout(this.releaseTimer)
     this.persist()
     this.sessions.closeAll()
     this.terminals.killAll()
@@ -145,6 +162,31 @@ export class SymphonyCore {
       machinePosition: s.machinePosition ?? { x: s.hubPosition.x, y: s.hubPosition.y - 200 },
       control: this.control
     }
+  }
+
+  /**
+   * Files a deleted session or loop referred to. They are deleted shortly after, in one batch,
+   * unless another session, loop or remote copy still refers to them (files are stored by content,
+   * so two sessions can share one).
+   */
+  releaseFiles(ids: Iterable<string>): void {
+    for (const id of ids) this.released.add(id)
+    if (!this.released.size) return
+    clearTimeout(this.releaseTimer)
+    this.releaseTimer = setTimeout(() => {
+      const candidates = [...this.released]
+      this.released.clear()
+      this.sweepFiles(candidates)
+    }, RELEASE_DELAY_MS)
+  }
+
+  private sweepFiles(candidates: string[], minAgeMs = 0): void {
+    if (!candidates.length) return
+    const referenced = this.sessions.assetRefs()
+    for (const l of this.loops.list()) for (const id of assetIdsOfLoop(l)) referenced.add(id)
+    for (const id of this.extraFileRefs()) referenced.add(id)
+    const removed = this.assets.sweep(candidates, referenced, minAgeMs)
+    if (removed.length) console.log(`[assets] deleted ${removed.length} file(s) no longer used`)
   }
 
   /** True while sessions or loops are running or waiting. */
@@ -470,6 +512,11 @@ export class SymphonyCore {
       loopStop: async (id) => loops.stop(id),
       loopDecide: (id, decision) => loops.decide(id, decision),
       openArtifact: (projectId, artifact) => this.adapters.openArtifact(project(projectId).path, artifact),
+      asset: (_ownerId, assetId) => this.assets.dataUrl(assetId),
+      openAsset: async (_ownerId, assetId) => {
+        const path = this.assets.path(assetId)
+        return path ? this.adapters.openPath(path) : 'That file is no longer stored.'
+      },
       setAutoApprove: async (on) => {
         this.autoApprove = on
         sessions.setAutoApprove(on)

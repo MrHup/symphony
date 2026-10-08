@@ -59,6 +59,7 @@ on one machine can be tested without touching the network or the firewall.
 | Attach images | Paste them (Ctrl/⌘+V) into the right-click prompt bubble or a session's reply box. Thumbnails appear above the text; hover one to remove it. A reply can be just images |
 | Watch or answer a session | Click its node. Approvals, questions and replies all happen in that view |
 | Watch a subagent | Click its node (it hangs off its session while it runs) |
+| See what a session made | Ask for it ("take a screenshot of the home screen"). Claude shows files with its `show_files` tool: images appear in the session view (click for the full-window viewer, ← → between images), PDFs and other files open in their default app. Images Claude reads itself, such as its own screenshots, appear under that tool call |
 | See uncommitted changes | Click the `+n −n` counts on a project |
 | Edit CLAUDE.md | Click the page icon on a project. Save with Ctrl/⌘+S |
 | Read a skill | Click it (Source or Rendered) |
@@ -127,10 +128,32 @@ changes, then you approve.
   for agent steps, squares for human reviews; the current one is white). Only the running step's
   session is shown, under the loop; earlier runs are listed in the loop's history with "Open
   session".
-- **Opening artifacts.** Links open in the browser. Files open in their default app only if they
-  are documents or images (HTML, PDF, images, Markdown, text, JSON, CSV and similar); anything
-  else is shown in its folder, because paths come from agent output and opening a script or
-  program would run it.
+- **Reviewing artifacts.** Files a step hands over (a file, a folder, or a pattern such as
+  `out/*.png`) are copied when the step routes, so the review shows exactly what the step produced.
+  Images appear as a gallery in the review card, with the full-window viewer; PDFs and other
+  documents open in their default app. Links open in the browser. Files that cannot be shown
+  (scripts, programs) stay as paths and are only shown in their folder, because opening one would
+  run it.
+
+## Files shown in sessions
+
+Every session (except the optimize step) has a `show_files` tool, and its system prompt says that
+the user watches from Symphony's window, possibly on another computer, so a file only reaches them
+through that tool. Shown and handed-over files are copied into an asset store in Symphony's data
+folder, named by the SHA-256 of their content (images, PDFs, HTML and text; up to 20 files at a
+time, 20 MB each). Transcripts and handoffs carry only a reference and a small preview made with
+Electron's `nativeImage` (PDF previews come from the OS thumbnailer on macOS and Windows). For a
+remote machine, the orchestrator fetches each file once, checks it against its hash, keeps it in
+its own store, and fetches new files as soon as they appear, so they can still be reviewed while
+that machine sleeps.
+
+Files are deleted with what showed them: removing a session (or its project) deletes its files,
+and deleting a loop or running it again deletes the files its handoffs carried, unless another
+session or loop still refers to the same file. The orchestrator records which remote session or
+loop each of its copies belongs to (`remote-files.json`), and deletes a copy once those are gone,
+including ones removed while the link was down (noticed at the resync) or when the machine is
+revoked. A minute after startup, a sweep deletes stored files that nothing refers to and that are
+older than ten minutes, in case Symphony quit in the middle of a cleanup.
 
 ## Remote machines
 
@@ -249,7 +272,9 @@ with your own environment, so a `claude` you run there yourself is not covered.
 | Path | Role |
 |---|---|
 | `src/main/platform.ts` | **All platform-specific code**: config paths, PATH repair, process spawning, gh and git lookup, the git credential environment, window chrome, the bundled Claude binary path |
-| `src/main/sessions.ts` | Runs sessions through the Agent SDK; turns the stream into node status and transcript items; holds approvals and questions until answered |
+| `src/main/sessions.ts` | Runs sessions through the Agent SDK; turns the stream into node status and transcript items; holds approvals and questions until answered; the `show_files` tool |
+| `src/main/assets.ts` | The asset store: files shown in sessions and handed over in loops, by content hash |
+| `src/renderer/src/components/Files.tsx` | File gallery and the full-window image viewer |
 | `src/main/pipeline.ts` | `/optimize-prompt` command and extraction of the optimized prompt |
 | `src/main/claudeConfig.ts` | Inspector query, skill discovery, MCP status, CLAUDE.md read/write |
 | `src/main/git.ts` | Change counts and HEAD/working-tree contents (includes untracked files, like VS Code) |

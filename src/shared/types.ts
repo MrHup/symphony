@@ -89,7 +89,8 @@ export type TranscriptItem =
       name: string
       input: Record<string, unknown>
       parent: string | null
-      result?: { text: string; isError: boolean }
+      /** files: images the tool returned (e.g. Read on a screenshot), kept so they can be seen. */
+      result?: { text: string; isError: boolean; files?: AssetRef[] }
     }
   | {
       kind: 'approval'
@@ -114,6 +115,23 @@ export type TranscriptItem =
     }
   | { kind: 'result'; id: string; text: string; isError: boolean; costUsd?: number; durationMs?: number }
   | { kind: 'notice'; id: string; text: string }
+  /** Files Claude showed with the show_files tool. */
+  | { kind: 'files'; id: string; files: AssetRef[]; note?: string }
+
+/**
+ * A file copied into the asset store of the machine that made it, at the moment it was shown or
+ * handed over, so what you review cannot change afterwards. The id is the SHA-256 of its content.
+ */
+export interface AssetRef {
+  id: string
+  name: string
+  mediaType: string
+  size: number
+  /** Where the file was, on the machine that made it. */
+  path: string
+  /** A small preview as a data URL; missing when none could be made. */
+  thumb?: string
+}
 
 export interface SkillInfo {
   id: string
@@ -222,6 +240,8 @@ export interface LoopArtifact {
   /** A file, absolute or relative to the project folder. */
   path?: string
   url?: string
+  /** The file as copied at handoff (images, PDFs and other viewable files). */
+  asset?: AssetRef
 }
 
 /** One move of the loop: who decided, from which step, to where, and what they handed over. */
@@ -451,3 +471,7 @@ export type MainEvent =
   | { type: 'remote'; status: RemoteStatus }
 
 export const USER_HUB_ID = 'hub:user'
+
+/** The tool every session has for showing files to the user (see sessions.ts). */
+export const SHOW_FILES_SERVER = 'symphony_view'
+export const SHOW_FILES_TOOL = `mcp__${SHOW_FILES_SERVER}__show_files`

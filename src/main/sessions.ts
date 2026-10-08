@@ -1,9 +1,12 @@
 // Runs Claude Code sessions through the Agent SDK and turns their message stream into graph state
 // (session/agent status) and transcript items. Approvals and AskUserQuestion prompts are held here
 // until the user answers them in the session view.
-import { query, type CanUseTool, type McpServerConfig, type PermissionResult, type PermissionUpdate, type Query, type SDKMessage, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
+import { createSdkMcpServer, query, tool, type CanUseTool, type McpSdkServerConfigWithInstance, type McpServerConfig, type PermissionResult, type PermissionUpdate, type Query, type SDKMessage, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import { randomUUID } from 'node:crypto'
-import type { AgentInfo, ApprovalDecision, AskQuestion, EffortLevel, GhIdentity, ImageInput, MainEvent, NodeStatus, SessionInfo, SessionKind, TranscriptItem } from '@shared/types'
+import { basename } from 'node:path'
+import { z } from 'zod'
+import { SHOW_FILES_SERVER, SHOW_FILES_TOOL, type AgentInfo, type ApprovalDecision, type AskQuestion, type AssetRef, type EffortLevel, type GhIdentity, type ImageInput, type MainEvent, type NodeStatus, type SessionInfo, type SessionKind, type TranscriptItem } from '@shared/types'
+import { assetIdsIn, type AssetStore } from './assets'
 import { claudeExecutable } from './platform'
 import { deleteTranscript, loadTranscript, saveTranscript } from './store'
 import { keySourceProblem, subscriptionEnv, subscriptionProblem, subscriptionSettings } from './subscription'
@@ -12,6 +15,21 @@ import { keySourceProblem, subscriptionEnv, subscriptionProblem, subscriptionSet
 const IDLE_CLOSE_MS = 10 * 60_000
 /** Finished agents stay on the graph this long so their exit is visible. */
 const AGENT_LINGER_MS = 1600
+
+/**
+ * Appended to Claude Code's system prompt: the user watches from Symphony's window, possibly on
+ * another computer, so a file only reaches them through show_files.
+ */
+const SHOW_FILES_PROMPT = `# Showing files to the user
+This session runs inside Symphony. The user follows it in Symphony's window, which may be on another computer, so they cannot open files on this machine, and a file path in your reply shows them nothing. Whenever you create, capture or inspect something visual the user would want to see (a screenshot, an image, a rendered page, a chart, a PDF), or the user asks to see something, save it to a file and call the show_files tool with its path. Folders and patterns such as out/*.png work too. To capture a screen, use the platform's own tools, for example \`screencapture -x shot.png\` on macOS, \`xcrun simctl io booted screenshot shot.png\` for the iOS Simulator, or \`adb exec-out screencap -p > shot.png\` for an Android device or emulator.`
+
+/** Image blocks in a tool result (Read on a screenshot, an MCP tool that returns an image). */
+function toolResultImages(content: unknown): { mediaType: string; data: string }[] {
+  if (!Array.isArray(content)) return []
+  return content
+    .filter((c): c is { type: 'image'; source: { type: string; media_type: string; data: string } } => c?.type === 'image' && c.source?.type === 'base64' && typeof c.source.data === 'string')
+    .map((c) => ({ mediaType: c.source.media_type, data: c.source.data }))
+}
 
 interface Pending {
   kind: 'approval' | 'question'
@@ -129,7 +147,8 @@ export class SessionManager {
 
   constructor(
     private emit: (e: MainEvent) => void,
-    private onSessionsChanged: () => void
+    private onSessionsChanged: () => void,
+    private assets: AssetStore
   ) {}
 
   /** Re-create sessions from disk after a restart. Their processes are gone, so they show as finished and resume on follow-up. */
@@ -248,12 +267,25 @@ export class SessionManager {
   dismiss(id: string): void {
     const rt = this.runtimes.get(id)
     if (!rt) return
+    const files = assetIdsIn(rt.items.length ? rt.items : loadTranscript(id))
     this.closeProcess(rt)
     for (const agent of [...this.agents.values()]) if (agent.sessionId === id) this.removeAgent(agent.id)
     this.runtimes.delete(id)
     deleteTranscript(id)
     this.emit({ type: 'sessionRemoved', id })
     this.onSessionsChanged()
+    // Its files go too, unless another session or loop still refers to them.
+    if (files.length) this.onFilesReleased(files)
+  }
+
+  /** Set by the core: files that may no longer be needed. */
+  onFilesReleased: (ids: string[]) => void = () => undefined
+
+  /** Every stored file a session's transcript refers to (transcripts not in memory are read from disk). */
+  assetRefs(): Set<string> {
+    const refs = new Set<string>()
+    for (const rt of this.runtimes.values()) for (const id of assetIdsIn(rt.items.length ? rt.items : loadTranscript(rt.info.id))) refs.add(id)
+    return refs
   }
 
   closeAll(): void {
@@ -372,6 +404,8 @@ export class SessionManager {
         this.refreshStatus(rt)
       })
 
+    // The optimize step only rewrites a prompt; every other session can show files.
+    const show = rt.info.kind !== 'optimize'
     const q = query({
       prompt: input,
       options: {
@@ -380,15 +414,15 @@ export class SessionManager {
         effort: rt.info.effort,
         resume: rt.info.sdkSessionId,
         settingSources: ['user', 'project', 'local'],
-        systemPrompt: { type: 'preset', preset: 'claude_code' },
+        systemPrompt: show ? { type: 'preset', preset: 'claude_code', append: SHOW_FILES_PROMPT } : { type: 'preset', preset: 'claude_code' },
         pathToClaudeCodeExecutable: claudeExecutable(),
         includePartialMessages: true,
         forwardSubagentText: true,
         thinking: { type: 'adaptive', display: 'summarized' },
         permissionMode: 'default',
         canUseTool,
-        mcpServers: rt.tools?.mcpServers,
-        allowedTools: rt.tools?.allowedTools,
+        mcpServers: show ? { [SHOW_FILES_SERVER]: this.showFilesServer(rt), ...rt.tools?.mcpServers } : rt.tools?.mcpServers,
+        allowedTools: show ? [SHOW_FILES_TOOL, ...(rt.tools?.allowedTools ?? [])] : rt.tools?.allowedTools,
         env: subscriptionEnv(process.env, { ...rt.env, CLAUDE_AGENT_SDK_CLIENT_APP: 'symphony/0.1.0' }),
         settings: subscriptionSettings,
         stderr: (data) => console.error(`[claude ${rt.info.id.slice(0, 8)}]`, data.trimEnd())
@@ -396,6 +430,49 @@ export class SessionManager {
     })
     rt.q = q
     void this.pump(rt, q)
+  }
+
+  /** The show_files tool, bound to one session: it copies the files and puts them in the transcript. */
+  private showFilesServer(rt: Runtime): McpSdkServerConfigWithInstance {
+    return createSdkMcpServer({
+      name: SHOW_FILES_SERVER,
+      version: '1.0.0',
+      alwaysLoad: true,
+      tools: [
+        tool(
+          'show_files',
+          'Show files to the user in Symphony: screenshots, images, rendered pages, charts, PDFs, HTML or text files. The user cannot open files on this machine any other way. Images appear in the conversation; other files open in their default app. Files are copied at this moment, so show them again after changing them.',
+          {
+            paths: z.array(z.string()).min(1).describe('Files, folders, or patterns such as out/*.png; absolute or relative to the working directory. At most 20 files.'),
+            note: z.string().optional().describe('One line about what the user is looking at, e.g. "Home screen after the fix".')
+          },
+          async (args) => {
+            const { files, skipped } = await this.assets.collect(rt.info.cwd, args.paths)
+            if (files.length) this.upsert(rt, { kind: 'files', id: randomUUID(), files, note: args.note?.trim() || undefined })
+            const text = [files.length ? `Shown to the user: ${files.map((f) => f.name).join(', ')}.` : 'Nothing was shown.', skipped.length ? `Not shown: ${skipped.join('; ')}.` : '']
+              .filter(Boolean)
+              .join(' ')
+            return { content: [{ type: 'text', text }], isError: !files.length }
+          }
+        )
+      ]
+    })
+  }
+
+  /** Images a tool returned are kept (they used to become "[image]"), so they can be seen too. */
+  private async keepImages(rt: Runtime, toolId: string, images: { mediaType: string; data: string }[]): Promise<void> {
+    const item = rt.items.find((i) => i.id === toolId)
+    if (item?.kind !== 'tool' || !item.result) return
+    const from = typeof item.input.file_path === 'string' ? item.input.file_path : item.name
+    const files: AssetRef[] = []
+    for (const [n, img] of images.entries()) {
+      const name = typeof item.input.file_path === 'string' ? basename(item.input.file_path) : `${item.name.replace(/^mcp__/, '')}-${n + 1}.${img.mediaType.split('/')[1] ?? 'png'}`
+      const ref = await this.assets.storeBuffer(Buffer.from(img.data, 'base64'), name, img.mediaType, from).catch(() => null)
+      if (ref) files.push(ref)
+    }
+    if (!files.length || !this.runtimes.has(rt.info.id)) return
+    item.result = { ...item.result, files }
+    this.upsert(rt, item)
   }
 
   private async pump(rt: Runtime, q: Query): Promise<void> {
@@ -545,6 +622,8 @@ export class SessionManager {
       if (item?.kind !== 'tool') continue
       item.result = { text: toolResultText(block.content), isError: !!block.is_error }
       this.upsert(rt, item)
+      const images = toolResultImages(block.content)
+      if (images.length) void this.keepImages(rt, item.id, images)
     }
   }
 

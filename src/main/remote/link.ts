@@ -10,7 +10,7 @@ import { basename, dirname, join, resolve } from 'node:path'
 import type { createConnection as netConnection } from 'node:net'
 import { connect, type ConnectionOptions, type TLSSocket } from 'node:tls'
 import { WebSocket } from 'ws'
-import { ALPN_LINK, ALPN_PAIR, DEFAULT_PORT, LINK_METHODS, MAX_FRAME_BYTES, PAIR_TTL_MS, PC_ONLY, PROTOCOL, REMOTE_TERM_PREFIX, type ByeReason, type Frame, type Hello } from '@shared/remote'
+import { ALPN_LINK, ALPN_PAIR, DEFAULT_PORT, LINK_METHODS, MAX_FILE_BYTES, MAX_FRAME_BYTES, PAIR_TTL_MS, PC_ONLY, PROTOCOL, REMOTE_TERM_PREFIX, type ByeReason, type Frame, type Hello } from '@shared/remote'
 import type { FolderListing, LinkState, LoopArtifact, LoopDecision, MachineHealth, MainEvent, RemoteStatus } from '@shared/types'
 import type { SymphonyCore } from '../core'
 import { artifactPath, isMac, isViewable, isWindows, keepAwake, readHealth } from '../platform'
@@ -26,7 +26,6 @@ const HEALTH_POLL_MS = 60_000
 const TERM_FLUSH_MS = 30
 /** Terminal output waits while this much is queued on the socket, so it cannot delay session events. */
 const TERM_HIGH_WATER = 1024 * 1024
-const MAX_ARTIFACT_BYTES = 25 * 1024 * 1024
 
 interface PairingState {
   wire: Wire
@@ -516,9 +515,11 @@ export class RemoteLink {
   // ---------- requests from the orchestrator ----------
 
   private async execute(method: string, args: unknown[]): Promise<unknown> {
-    if (PC_ONLY.has(method) || method.startsWith('remote') || method === 'claudeLogin') throw new Error(`${method} is not available remotely`)
+    // asset/openAsset are served by the orchestrator from its own copy, fetched with fetchAsset.
+    if (PC_ONLY.has(method) || method.startsWith('remote') || method === 'claudeLogin' || method === 'asset' || method === 'openAsset') throw new Error(`${method} is not available remotely`)
     if (LINK_METHODS.has(method)) {
       if (method === 'listFolders') return this.listFolders(args[0] as string | undefined)
+      if (method === 'fetchAsset') return this.fetchAsset(String(args[0]))
       return this.fetchArtifact(args[0] as string, args[1] as LoopArtifact)
     }
     const term = (id: unknown) => `${REMOTE_TERM_PREFIX}${String(id)}`
@@ -614,6 +615,12 @@ export class RemoteLink {
     return { path: real, parent: isRoot ? null : dirname(real), entries }
   }
 
+  /** A stored file (shown in a session or handed over in a loop), by its content hash. */
+  private async fetchAsset(id: string): Promise<{ data: string; ext: string }> {
+    const { data, ext } = await this.core.assets.read(id)
+    return { data: data.toString('base64'), ext }
+  }
+
   /** A handed-over file, sent to the orchestrator to open there. Viewable types only. */
   private async fetchArtifact(projectId: string, artifact: LoopArtifact): Promise<{ name: string; data: string } | { error: string }> {
     const path = artifactPath(this.core.project(projectId).path, artifact)
@@ -621,7 +628,7 @@ export class RemoteLink {
     if (!existsSync(path)) return { error: `${path} does not exist on ${this.name}.` }
     if (!isViewable(path)) return { error: `Only documents and images can be opened from ${this.name}; this file stays there (${path}).` }
     const info = await stat(path)
-    if (info.size > MAX_ARTIFACT_BYTES) return { error: `${basename(path)} is too large to send (${Math.round(info.size / 1024 / 1024)} MB).` }
+    if (info.size > MAX_FILE_BYTES) return { error: `${basename(path)} is too large to send (${Math.round(info.size / 1024 / 1024)} MB).` }
     audit('artifact opened remotely', path)
     return { name: basename(path), data: (await readFile(path)).toString('base64') }
   }

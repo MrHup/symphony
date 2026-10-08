@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import type { GhIdentity, LoopArtifact, LoopDecision, LoopDraft, LoopHandoff, LoopInfo, LoopStep, MainEvent, Project } from '@shared/types'
 import { extractOptimizedPrompt, OPTIMIZE_LINGER_MS, optimizeCommand } from './pipeline'
+import { assetIdsOfLoop, type AssetStore } from './assets'
 import type { SessionManager } from './sessions'
 
 const ROUTE_SERVER = 'symphony_loop'
@@ -27,6 +28,9 @@ interface Deps {
   project(id: string): Project
   identityFor(cwd: string): Promise<{ identity: GhIdentity; env: Record<string, string> }>
   defaultModel(): string
+  assets: AssetStore
+  /** Files that may no longer be needed (deleted unless something else refers to them). */
+  releaseFiles(ids: string[]): void
 }
 
 interface Route {
@@ -108,6 +112,7 @@ export class LoopManager {
     this.loops.delete(id)
     this.d.emit({ type: 'loopRemoved', id })
     this.d.persist()
+    this.d.releaseFiles(assetIdsOfLoop(l))
   }
 
   /** Start from step 1 (draft, stopped or done), or rerun the current step of a paused loop. */
@@ -119,9 +124,12 @@ export class LoopManager {
     }
     if (!['draft', 'stopped', 'done'].includes(l.state)) return
     if (!l.steps.length) throw new Error('The loop has no steps.')
+    // A new run starts a new history; the files the old one handed over can go.
+    const handedOver = assetIdsOfLoop(l)
     l.runs = 0
     l.runsAtHuman = 0
     l.history = []
+    this.d.releaseFiles(handedOver)
     l.current = null
     l.pausedReason = undefined
     for (const s of this.d.sessions.list()) if (s.loopId === id) this.d.sessions.archive(s.id)
@@ -269,7 +277,7 @@ export class LoopManager {
       tools: [
         tool(
           'loop_route',
-          `Decide where the loop goes after your step, and hand over your work. Call it exactly once, as your last action. forward: ${next ? `hand your work to ${next}` : 'you are the last step, so this completes the loop'}. back: send the work back to an earlier step (1-${index + 1}; ${index + 1} reruns your own step) because it has to be redone.`,
+          `Decide where the loop goes after your step, and hand over your work. Call it exactly once, as your last action. forward: ${next ? `hand your work to ${next}` : 'you are the last step, so this completes the loop'}. back: send the work back to an earlier step (1-${index + 1}; ${index + 1} reruns your own step) because it has to be redone. Image, PDF and other viewable file artifacts are copied now and shown to a human reviewer, who may be on another computer.`,
           {
             next: z.enum(['forward', 'back']).describe('forward: the work is good enough to move on. back: an earlier step must redo work.'),
             step: z.number().int().optional().describe(`With back: the step number to return to, 1-${index + 1}.`),
@@ -280,7 +288,7 @@ export class LoopManager {
               .array(
                 z.object({
                   label: z.string().describe('What this is, e.g. "Generated report".'),
-                  path: z.string().optional().describe('A file, absolute or relative to the project folder.'),
+                  path: z.string().optional().describe('A file, a folder, or a pattern such as out/*.png; absolute or relative to the project folder.'),
                   url: z.string().optional().describe('A link, e.g. a local server page.')
                 })
               )
@@ -292,18 +300,37 @@ export class LoopManager {
               return { isError: true, content: [{ type: 'text', text: `With next "back", step must be a number from 1 to ${index + 1}.` }] }
             }
             const toStep = args.next === 'back' ? args.step! - 1 : index + 1 < n ? index + 1 : null
-            this.routes.set(sessionId(), {
-              decision: args.next,
-              toStep,
-              summary: args.summary,
-              artifacts: (args.artifacts ?? []).filter((a) => a.path || a.url)
-            })
+            const { artifacts, skipped } = await this.copyArtifacts(l.projectId, (args.artifacts ?? []).filter((a) => a.path || a.url))
+            this.routes.set(sessionId(), { decision: args.next, toStep, summary: args.summary, artifacts })
             const where = toStep === null ? 'the loop completes' : `the loop continues with ${stepLabel(l, toStep)}`
-            return { content: [{ type: 'text', text: `Recorded: ${where}. End your turn now without further tool calls.` }] }
+            const note = skipped.length ? ` These artifacts could not be copied and are passed on as paths only: ${skipped.join('; ')}.` : ''
+            return { content: [{ type: 'text', text: `Recorded: ${where}.${note} End your turn now without further tool calls.` }] }
           }
         )
       ]
     })
+  }
+
+  /**
+   * Copy the files a step hands over, so the reviewer sees exactly what the step produced. Folders
+   * and patterns become one artifact per file; links and files that cannot be shown stay as paths.
+   */
+  private async copyArtifacts(projectId: string, list: LoopArtifact[]): Promise<{ artifacts: LoopArtifact[]; skipped: string[] }> {
+    const base = this.d.project(projectId).path
+    const artifacts: LoopArtifact[] = []
+    const skipped: string[] = []
+    for (const a of list) {
+      if (!a.path) {
+        artifacts.push(a)
+        continue
+      }
+      const got = await this.d.assets.collect(base, [a.path]).catch((err: Error) => ({ files: [], skipped: [err.message] }))
+      skipped.push(...got.skipped)
+      if (!got.files.length) artifacts.push(a)
+      else if (got.files.length === 1) artifacts.push({ ...a, path: got.files[0].path, asset: got.files[0] })
+      else artifacts.push(...got.files.map((f) => ({ label: `${a.label}: ${f.name}`, path: f.path, asset: f })))
+    }
+    return { artifacts, skipped }
   }
 
   private async onStepTurnEnd(loopId: string, sessionId: string, isError: boolean): Promise<void> {

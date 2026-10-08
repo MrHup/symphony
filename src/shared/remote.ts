@@ -56,7 +56,7 @@ export type Frame =
 // ---------- which request goes where ----------
 
 /** Allowed from a controlled machine's own window: they only read. */
-export const READ_METHODS = new Set(['snapshot', 'transcript', 'gitStats', 'gitFileDiff', 'readSkill', 'readClaudeMd'])
+export const READ_METHODS = new Set(['snapshot', 'transcript', 'gitStats', 'gitFileDiff', 'readSkill', 'readClaudeMd', 'asset', 'openAsset'])
 
 /** Never routed to a remote machine. */
 export const PC_ONLY = new Set(['refreshUsage', 'micAccess', 'refineDictation', 'dictationLanguage', 'moveNode'])
@@ -80,7 +80,10 @@ export const MACHINE_ARG: Record<string, number> = {
 export const NO_TIMEOUT = new Set(['loopStart', 'refreshConfig', 'listFolders'])
 
 /** Methods only the link serves on a remote machine (not part of the window's API there). */
-export const LINK_METHODS = new Set(['listFolders', 'fetchArtifact'])
+export const LINK_METHODS = new Set(['listFolders', 'fetchArtifact', 'fetchAsset'])
+
+/** Largest file sent over the link: base64 adds a third, and a frame holds 32 MB. */
+export const MAX_FILE_BYTES = 20 * 1024 * 1024
 
 // ---------- IDs ----------
 

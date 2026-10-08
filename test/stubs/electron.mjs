@@ -9,5 +9,6 @@ export const safeStorage = {
   decryptString: (b) => b.toString()
 }
 export const powerMonitor = { isOnBatteryPower: () => false, on: () => undefined }
+export const nativeImage = { createFromPath: () => ({ isEmpty: () => true }), createThumbnailFromPath: async () => ({ isEmpty: () => true }) }
 export const powerSaveBlocker = { start: () => 1, stop: () => undefined }
-export default { app, dialog, shell, systemPreferences, safeStorage, powerMonitor, powerSaveBlocker }
+export default { app, dialog, shell, systemPreferences, safeStorage, powerMonitor, powerSaveBlocker, nativeImage }

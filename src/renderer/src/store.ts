@@ -4,6 +4,7 @@ import {
   USER_HUB_ID,
   type AgentInfo,
   type AppSnapshot,
+  type AssetRef,
   type ControlState,
   type EffortLevel,
   type GhAccounts,
@@ -79,6 +80,8 @@ interface State {
   logins: Record<string, LoginPrompt>
   panels: Panel[]
   composer: Composer | null
+  /** The image viewer: images of one session or loop, and the one shown. */
+  lightbox: { ownerId: string; files: AssetRef[]; index: number } | null
   apply(e: MainEvent): void
   load(s: AppSnapshot): void
   openPanel(kind: PanelKind, targetId: string): void
@@ -86,6 +89,7 @@ interface State {
   raisePanel(id: string): void
   updatePanel(id: string, patch: Partial<Panel>): void
   setComposer(c: Composer | null): void
+  setLightbox(l: State['lightbox']): void
   toggleHub(id: string): void
   setDefaultModel(model: string, machineId?: string): void
   setModelEffort(model: string, effort: EffortLevel | null, machineId?: string): void
@@ -184,6 +188,7 @@ export const useStore = create<State>((set, get) => ({
   logins: {},
   panels: [],
   composer: null,
+  lightbox: null,
 
   load(s) {
     const prev = get().waitingSince
@@ -392,6 +397,10 @@ export const useStore = create<State>((set, get) => ({
 
   setComposer(c) {
     set({ composer: c })
+  },
+
+  setLightbox(l) {
+    set({ lightbox: l })
   },
 
   toggleHub(id) {

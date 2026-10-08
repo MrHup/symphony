@@ -2,7 +2,7 @@
 // machine run in this process with fake cores and talk over real TLS on 127.0.0.1.
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import { mkdirSync, mkdtempSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
@@ -20,6 +20,8 @@ import { LinkServer } from '../src/main/remote/server'
 import type { RemoteSettings } from '../src/main/remote/settings'
 import { Wire } from '../src/main/remote/wire'
 import { flushAll, setDataDir } from '../src/main/store'
+import { AssetStore } from '../src/main/assets'
+import { SessionManager } from '../src/main/sessions'
 
 // ---------- helpers ----------
 
@@ -88,6 +90,13 @@ class FakeCore {
   sessions = { get: (id: string) => this.snap.sessions.find((s) => s.id === id) }
   loops = { list: () => this.snap.loops }
   terminals = { pause: () => undefined, resume: () => undefined }
+  /** Each machine has its own asset folder. */
+  assets = new AssetStore(() => this.assetDir, async () => null)
+  assetDir = mkdtempSync(join(tmpdir(), 'symphony-assets-'))
+  extraFileRefs: () => Iterable<string> = () => []
+  releaseFiles(ids: string[]) {
+    this.assets.sweep(ids, new Set(this.extraFileRefs()))
+  }
 
   on(l: (e: MainEvent) => void) {
     this.listeners.add(l)
@@ -162,7 +171,15 @@ function settings(patch: Partial<RemoteSettings>): RemoteSettings {
   return { orchestrate: false, port: 0, machines: [], remoteMode: false, orchestrator: null, graceSeconds: 1, sharedFolders: [], terminals: false, ...patch }
 }
 
-const adapters = { pickFolder: async () => null, openExternal: () => undefined, openPath: async () => null, openArtifact: async () => null, micAccess: async () => true }
+const opened: string[] = []
+const adapters = {
+  pickFolder: async () => null,
+  openExternal: () => undefined,
+  openPath: async (path: string) => (opened.push(path), null),
+  openArtifact: async () => null,
+  micAccess: async () => true,
+  thumbnail: async () => null
+}
 
 interface Pair {
   pcCore: FakeCore
@@ -584,5 +601,141 @@ describe('link server', () => {
     assert.equal(wire.send({ t: 'refresh' }), true)
     wire.close()
     wss.close()
+  })
+})
+
+describe('files shown and handed over', () => {
+  const png = (n: number) => Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47]), Buffer.from(String(n))])
+
+  test('the store copies files, folders and patterns, by content, and skips what cannot be shown', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'symphony-shots-'))
+    for (let i = 1; i <= 3; i++) writeFileSync(join(dir, `shot-${i}.png`), png(i))
+    writeFileSync(join(dir, 'copy.png'), png(1))
+    writeFileSync(join(dir, 'tool.exe'), 'x')
+    const storeDir = mkdtempSync(join(tmpdir(), 'symphony-store-'))
+    const store = new AssetStore(() => storeDir, async () => null)
+    const byPattern = await store.collect(dir, ['shot-*.png'])
+    assert.deepEqual(byPattern.files.map((f) => f.name), ['shot-1.png', 'shot-2.png', 'shot-3.png'])
+    assert.equal(byPattern.files[0].mediaType, 'image/png')
+    const byFolder = await store.collect(dir, ['.'])
+    assert.equal(byFolder.files.length, 4, 'the folder gives its viewable files only')
+    assert.equal(byFolder.files.find((f) => f.name === 'copy.png')!.id, byPattern.files[0].id, 'same content, same id')
+    const bad = await store.collect(dir, ['tool.exe', 'missing.png'])
+    assert.equal(bad.files.length, 0)
+    assert.equal(bad.skipped.length, 2)
+    // What was shown cannot change afterwards.
+    writeFileSync(join(dir, 'shot-1.png'), png(99))
+    assert.deepEqual((await store.read(byPattern.files[0].id)).data, png(1))
+  })
+
+  test('the orchestrator fetches a remote file once, checks it, and still shows it while the machine is offline', async () => {
+    const m = await paired()
+    const s = m.macCore.addSession({ status: 'finished' })
+    await waitFor('session mirrored', () => m.orch.snapshot().sessions.some((x) => x.id === s.id))
+    const shot = join(m.shared, 'home.png')
+    writeFileSync(shot, png(7))
+    const ref = await m.macCore.assets.storeFile(shot)
+    assert.equal(m.pcCore.assets.path(ref.id), null)
+    const url = (await m.orch.invoke('asset', [s.id, ref.id])) as string
+    assert.equal(url, `data:image/png;base64,${png(7).toString('base64')}`)
+    assert.ok(m.pcCore.assets.path(ref.id), 'kept on the orchestrator')
+    m.link.disconnect()
+    await waitFor('offline', () => m.orch.status().machines[0].status !== 'online')
+    assert.equal(await m.orch.invoke('asset', [s.id, ref.id]), url)
+    await m.orch.invoke('openAsset', [s.id, ref.id])
+    assert.equal(opened.at(-1), m.pcCore.assets.path(ref.id), 'opened from the copy here')
+    await assert.rejects(m.orch.invoke('asset', [s.id, 'a'.repeat(64)]), /offline/)
+    stop(m)
+  })
+
+  test('files shown in a session are fetched as soon as they appear', async () => {
+    const m = await paired()
+    const s = m.macCore.addSession({ status: 'working' })
+    await waitFor('session mirrored', () => m.orch.snapshot().sessions.some((x) => x.id === s.id))
+    const shot = join(m.shared, 'early.png')
+    writeFileSync(shot, png(8))
+    const ref = await m.macCore.assets.storeFile(shot)
+    m.macCore.emit({ type: 'transcript', sessionId: s.id, item: { kind: 'files', id: 'f1', files: [ref] } })
+    await waitFor('prefetched', () => !!m.pcCore.assets.path(ref.id))
+    stop(m)
+  })
+})
+
+describe('cleaning up files', () => {
+  const png = (n: number) => Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47]), Buffer.from(`cleanup-${n}`)])
+  const newStore = () => {
+    const dir = mkdtempSync(join(tmpdir(), 'symphony-store-'))
+    return new AssetStore(() => dir, async () => null)
+  }
+
+  test('a sweep deletes only what nothing refers to, and leaves files that are too new', async () => {
+    const store = newStore()
+    const a = await store.storeBuffer(png(1), 'a.png', 'image/png', '/a.png')
+    const b = await store.storeBuffer(png(2), 'b.png', 'image/png', '/b.png')
+    assert.deepEqual(store.sweep([a.id, b.id], new Set(), 60_000), [], 'too new for a sweep with a minimum age')
+    assert.deepEqual(store.sweep([a.id, b.id], new Set([a.id])), [b.id])
+    assert.ok(store.path(a.id))
+    assert.equal(store.path(b.id), null)
+  })
+
+  test('deleting a session releases its files; one another session still shows stays', async () => {
+    const store = newStore()
+    const shared = await store.storeBuffer(png(3), 'shared.png', 'image/png', '/shared.png')
+    const own = await store.storeBuffer(png(4), 'own.png', 'image/png', '/own.png')
+    const session = (id: string): SessionInfo => ({ id, kind: 'task', anchorId: 'p', projectId: null, cwd: '/', title: id, model: 'opus', status: 'finished', createdAt: 1 })
+    const write = (id: string, items: TranscriptItem[]) => {
+      mkdirSync(join(dataDir, 'transcripts'), { recursive: true })
+      writeFileSync(join(dataDir, 'transcripts', `${id}.json`), JSON.stringify(items))
+    }
+    const one = randomUUID()
+    const two = randomUUID()
+    write(one, [{ kind: 'files', id: 'f1', files: [shared, own] }])
+    write(two, [{ kind: 'tool', id: 't1', name: 'Read', input: {}, parent: null, result: { text: '', isError: false, files: [shared] } }])
+    const sessions = new SessionManager(() => undefined, () => undefined, store)
+    sessions.restore([session(one), session(two)])
+    let released: string[] = []
+    sessions.onFilesReleased = (ids) => (released = ids)
+    sessions.dismiss(one)
+    assert.deepEqual(released.sort(), [shared.id, own.id].sort())
+    store.sweep(released, sessions.assetRefs())
+    assert.equal(store.path(own.id), null, 'its own file is gone')
+    assert.ok(store.path(shared.id), 'the shared one stays while the other session shows it')
+  })
+
+  test('the orchestrator deletes its copy when the remote session is removed, not before', async () => {
+    const m = await paired()
+    const a = m.macCore.addSession({ status: 'finished' })
+    const b = m.macCore.addSession({ status: 'finished' })
+    await waitFor('sessions mirrored', () => m.orch.snapshot().sessions.filter((x) => x.id === a.id || x.id === b.id).length === 2)
+    const shot = join(m.shared, 'cleanup.png')
+    writeFileSync(shot, png(5))
+    const ref = await m.macCore.assets.storeFile(shot)
+    await m.orch.invoke('asset', [a.id, ref.id])
+    await m.orch.invoke('asset', [b.id, ref.id])
+    assert.ok(m.pcCore.assets.path(ref.id))
+    m.macCore.emit({ type: 'sessionRemoved', id: a.id })
+    await new Promise((r) => setTimeout(r, 200))
+    assert.ok(m.pcCore.assets.path(ref.id), 'still shown by the other remote session')
+    m.macCore.emit({ type: 'sessionRemoved', id: b.id })
+    await waitFor('copy deleted', () => m.pcCore.assets.path(ref.id) === null)
+    stop(m)
+  })
+
+  test('copies of files from sessions deleted while the link was down go at the resync', async () => {
+    const m = await paired()
+    const s = m.macCore.addSession({ status: 'finished' })
+    await waitFor('session mirrored', () => m.orch.snapshot().sessions.some((x) => x.id === s.id))
+    const shot = join(m.shared, 'gone.png')
+    writeFileSync(shot, png(6))
+    const ref = await m.macCore.assets.storeFile(shot)
+    await m.orch.invoke('asset', [s.id, ref.id])
+    m.link.disconnect()
+    await waitFor('offline', () => m.orch.status().machines[0].status !== 'online')
+    m.macCore.snap.sessions = m.macCore.snap.sessions.filter((x) => x.id !== s.id)
+    m.macCore.control = null
+    await m.link.setEnabled(true, m.macId)
+    await online(m)
+    await waitFor('copy deleted', () => m.pcCore.assets.path(ref.id) === null)
+    stop(m)
   })
 })

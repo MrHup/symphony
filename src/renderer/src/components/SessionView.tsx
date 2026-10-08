@@ -1,7 +1,8 @@
 import { createContext, memo, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { EFFORT_LABELS, type AskQuestion, type SessionInfo, type TranscriptItem } from '@shared/types'
+import { EFFORT_LABELS, SHOW_FILES_TOOL, type AskQuestion, type SessionInfo, type TranscriptItem } from '@shared/types'
 import { api, useLock, useStore, type Panel } from '../store'
 import { cleanError } from './Composer'
+import { FileGallery } from './Files'
 import { FloatingPanel } from './FloatingPanel'
 import { Glyph, statusLabel } from './Glyph'
 import { IconSend, IconStop, IconTrash } from './icons'
@@ -93,7 +94,7 @@ function MiniDiff({ name, input, cwd }: { name: string; input: Record<string, un
   )
 }
 
-function ToolCall({ item, cwd, hasChildren }: { item: Item<'tool'>; cwd: string; hasChildren: boolean }) {
+function ToolCall({ item, cwd, hasChildren, sessionId }: { item: Item<'tool'>; cwd: string; hasChildren: boolean; sessionId: string }) {
   const [open, setOpen] = useState(false)
   const arg = toolArg(item.name, item.input, cwd)
   const state = item.result ? (item.result.isError ? 'error' : '') : hasChildren ? 'running' : '…'
@@ -112,6 +113,8 @@ function ToolCall({ item, cwd, hasChildren }: { item: Item<'tool'>; cwd: string;
           {open && item.result && <pre className={`code-block${item.result.isError ? ' is-error' : ''}`}>{item.result.text || '(no output)'}</pre>}
         </div>
       )}
+      {/* Images the tool returned, such as a screenshot Claude read. */}
+      {item.result?.files && <FileGallery ownerId={sessionId} files={item.result.files} compact />}
     </div>
   )
 }
@@ -276,7 +279,16 @@ const Row = memo(function Row({ item, session, childParents }: { item: Transcrip
     case 'text':
       return item.text.trim() ? <Markdown text={item.text} /> : null
     case 'tool':
-      return <ToolCall item={item} cwd={session.cwd} hasChildren={childParents.has(item.id)} />
+      // show_files appears as its files, below; its call row would only repeat the paths.
+      if (item.name === SHOW_FILES_TOOL && !item.result?.isError) return null
+      return <ToolCall item={item} cwd={session.cwd} hasChildren={childParents.has(item.id)} sessionId={session.id} />
+    case 'files':
+      return (
+        <div className="t-files">
+          {item.note && <div className="t-files-note">{item.note}</div>}
+          <FileGallery ownerId={session.id} files={item.files} />
+        </div>
+      )
     case 'approval':
       return <Approval item={item} sessionId={session.id} cwd={session.cwd} />
     case 'question':

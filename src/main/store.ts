@@ -26,6 +26,9 @@ export function setDataDir(dir: string): void {
 }
 
 const dir = () => dataDir
+
+/** A path inside the data folder. */
+export const dataPath = (rel: string) => join(dataDir, rel)
 const stateFile = () => join(dir(), 'symphony-state.json')
 const transcriptDir = () => join(dir(), 'transcripts')
 const transcriptFile = (id: string) => join(transcriptDir(), `${id.replace(/[^\w-]/g, '_')}.json`)

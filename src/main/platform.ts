@@ -2,7 +2,7 @@
 // process spawning, gh lookup and the git credential wiring that makes sessions use a gh account.
 // Other modules must not branch on process.platform themselves. The Electron APIs the core needs
 // are handed to it as adapters from here too.
-import { dialog, powerMonitor, powerSaveBlocker, safeStorage, shell, systemPreferences, type BrowserWindow } from 'electron'
+import { dialog, nativeImage, powerMonitor, powerSaveBlocker, safeStorage, shell, systemPreferences, type BrowserWindow, type NativeImage } from 'electron'
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
@@ -247,6 +247,29 @@ export interface Adapters {
   openPath(path: string): Promise<string | null>
   openArtifact(baseDir: string, target: { path?: string; url?: string }): Promise<string | null>
   micAccess(): Promise<boolean>
+  /** A small preview of an image or PDF as a data URL, or null when none can be made. */
+  thumbnail(path: string, mediaType: string): Promise<string | null>
+}
+
+const THUMB_WIDTH = 320
+
+/**
+ * PNG and JPEG are decoded directly; other images and PDFs (first page) go through the OS
+ * thumbnailer, which exists on macOS (Quick Look) and Windows only.
+ */
+async function thumbnail(path: string, mediaType: string): Promise<string | null> {
+  try {
+    let img: NativeImage | null = mediaType === 'image/png' || mediaType === 'image/jpeg' ? nativeImage.createFromPath(path) : null
+    if ((!img || img.isEmpty()) && (mediaType.startsWith('image/') || mediaType === 'application/pdf') && (isMac || isWindows)) {
+      img = await nativeImage.createThumbnailFromPath(path, { width: THUMB_WIDTH * 2, height: THUMB_WIDTH * 2 })
+    }
+    if (!img || img.isEmpty()) return null
+    const small = img.getSize().width > THUMB_WIDTH ? img.resize({ width: THUMB_WIDTH, quality: 'good' }) : img
+    // JPEG keeps photos and screenshots small; PNG keeps transparency for everything else.
+    return mediaType === 'image/jpeg' ? `data:image/jpeg;base64,${small.toJPEG(80).toString('base64')}` : small.toDataURL()
+  } catch {
+    return null
+  }
 }
 
 export function electronAdapters(win: () => BrowserWindow | null): Adapters {
@@ -259,7 +282,8 @@ export function electronAdapters(win: () => BrowserWindow | null): Adapters {
     openExternal: (url) => void shell.openExternal(url),
     openPath: async (path) => (await shell.openPath(path)) || null,
     openArtifact,
-    micAccess: ensureMicAccess
+    micAccess: ensureMicAccess,
+    thumbnail
   }
 }
 

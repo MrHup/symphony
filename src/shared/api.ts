@@ -68,6 +68,13 @@ export interface InvokeApi {
   loopDecide(id: string, decision: LoopDecision): Promise<void>
   /** Opens a handed-over file in its default app, or a URL in the browser. */
   openArtifact(projectId: string, artifact: LoopArtifact): Promise<string | null>
+  /**
+   * A stored file as a data URL, for viewing. `ownerId` is the session or loop it belongs to (it
+   * says which machine has it); a remote file is fetched once and kept here.
+   */
+  asset(ownerId: string, assetId: string): Promise<string>
+  /** Opens a stored file in this machine's default app (PDFs and other non-image files). Returns an error or null. */
+  openAsset(ownerId: string, assetId: string): Promise<string | null>
   /** Allow Claude Code permission prompts without asking (not questions, not prompts forced by your own ask rules). */
   setAutoApprove(on: boolean, machineId?: string): Promise<void>
   /** Ask the OS for microphone access where needed (macOS). */
@@ -135,6 +142,8 @@ export const INVOKE_METHODS: (keyof InvokeApi)[] = [
   'loopStop',
   'loopDecide',
   'openArtifact',
+  'asset',
+  'openAsset',
   'setAutoApprove',
   'micAccess',
   'refineDictation',

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import './monaco'
 import { ComposerBubble } from './components/Composer'
 import { ControlBanner } from './components/ControlBanner'
+import { Lightbox } from './components/Files'
 import { FloatingPanel } from './components/FloatingPanel'
 import { Graph } from './components/Graph'
 import { IconAutoApprove, IconMeter, IconPlus, IconRemote, IconTerminal } from './components/icons'
@@ -203,6 +204,7 @@ export function App() {
         <PanelFor key={p.id} panel={p} />
       ))}
       <ComposerBubble />
+      <Lightbox />
       {dragging && <div className="drop-target" />}
     </ReactFlowProvider>
   )

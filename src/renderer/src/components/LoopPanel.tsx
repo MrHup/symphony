@@ -3,6 +3,7 @@ import type { EffortLevel, LoopArtifact, LoopDraft, LoopHandoff, LoopInfo, LoopS
 import { readImage } from '../images'
 import { api, loopStatus, machineConfig, useLock, useStore, type Panel } from '../store'
 import { Attachments } from './Attachments'
+import { FileGallery } from './Files'
 import { useDictation } from '../speech/dictation'
 import { DictationOverlay, DictationStatus, MicButton } from './Dictate'
 import { cleanError, EffortSelect, ModelSelect } from './Composer'
@@ -324,12 +325,15 @@ function StepRow({ loop, step, index }: { loop: LoopInfo; step: LoopStep; index:
   )
 }
 
-function Artifacts({ projectId, artifacts }: { projectId: string; artifacts: LoopArtifact[] }) {
+/** What a step handed over: copied files as a gallery, links and uncopied files as before. */
+function Artifacts({ loopId, projectId, artifacts }: { loopId: string; projectId: string; artifacts: LoopArtifact[] }) {
   const [error, setError] = useState<string | null>(null)
   if (!artifacts.length) return null
+  const copied = artifacts.flatMap((a) => (a.asset ? [a.asset] : []))
   return (
     <div className="artifacts">
-      {artifacts.map((a, i) => (
+      {copied.length > 0 && <FileGallery ownerId={loopId} files={copied} />}
+      {artifacts.filter((a) => !a.asset).map((a, i) => (
         <button
           key={i}
           className="artifact"
@@ -379,7 +383,7 @@ function Decision({ loop }: { loop: LoopInfo }) {
             {last.by === 'human' ? 'Your notes' : `Step ${last.fromStep + 1} ${last.decision === 'back' ? 'sent the work back' : 'handed over'}`}
           </div>
           <Markdown text={last.summary} />
-          <Artifacts projectId={loop.projectId} artifacts={last.artifacts} />
+          <Artifacts loopId={loop.id} projectId={loop.projectId} artifacts={last.artifacts} />
         </div>
       )}
       <textarea
@@ -451,7 +455,7 @@ function HistoryItem({ loop, h, hasSession }: { loop: LoopInfo; h: LoopHandoff; 
         )}
       </div>
       {h.decision !== 'stop' && <Markdown text={h.summary} />}
-      <Artifacts projectId={loop.projectId} artifacts={h.artifacts} />
+      <Artifacts loopId={loop.id} projectId={loop.projectId} artifacts={h.artifacts} />
     </div>
   )
 }

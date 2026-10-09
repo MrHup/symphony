@@ -566,6 +566,10 @@ export class RemoteLink {
         return audit('session removed', session(args[0]))
       case 'setAutoApprove':
         return audit(`auto-approve turned ${args[0] ? 'on' : 'off'}`)
+      case 'gitSwitch':
+        return audit(`switched to ${first(args[1])}`, this.projectName(args[0] as string))
+      case 'gitCommit':
+        return audit('committed', `${this.projectName(args[0] as string)}: ${first(args[1])}`)
       case 'writeClaudeMd':
         return audit('CLAUDE.md saved', this.projectName(args[0] as string))
       case 'removeProject':

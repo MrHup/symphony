@@ -185,6 +185,8 @@ export interface GitFileStat {
 
 export interface GitStats {
   isRepo: boolean
+  /** The checked-out branch, or the short commit hash when HEAD is detached. */
+  branch?: string
   added: number
   removed: number
   files: GitFileStat[]

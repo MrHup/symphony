@@ -12,7 +12,7 @@ import { USER_HUB_ID, type AppSnapshot, type ControlState, type EffortLevel, typ
 import { dictationLanguage, inspect, isProjectScoped, projectSkills, readClaudeMd, readUsage, toMcpInfo, userSkills, writeClaudeMd } from './claudeConfig'
 import { TerminalManager } from './terminals'
 import { LoopManager } from './loops'
-import { getFileDiff, getStats, remoteHost } from './git'
+import { commitAll, getFileDiff, getStats, listBranches, remoteHost, switchBranch } from './git'
 import { getAccounts, login, resolveIdentity } from './github'
 import { extractOptimizedPrompt, OPTIMIZE_LINGER_MS, optimizeCommand } from './pipeline'
 import { refineDictation } from './dictation'
@@ -495,6 +495,17 @@ export class SymphonyCore {
         return this.gitStats.get(projectId)!
       },
       gitFileDiff: (projectId, file) => getFileDiff(project(projectId).path, file),
+      gitBranches: (projectId) => listBranches(project(projectId).path),
+      gitSwitch: async (projectId, branch) => {
+        const p = project(projectId)
+        await switchBranch(p.path, branch)
+        await this.refreshGit(p)
+      },
+      gitCommit: async (projectId, message) => {
+        const p = project(projectId)
+        await commitAll(p.path, message)
+        await this.refreshGit(p)
+      },
       readSkill: async (skillId) => {
         const skill = this.allSkills().find((s) => s.id === skillId)
         if (!skill) throw new Error('Unknown skill')

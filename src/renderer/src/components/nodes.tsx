@@ -55,12 +55,13 @@ export function ProjectNode({ data }: NodeProps<ProjectNodeType>) {
           {stats?.isRepo !== false && (
             <button
               className={`diff-counts nodrag${clean ? ' is-clean' : ''}`}
-              title="Uncommitted changes"
+              title="Branch and uncommitted changes"
               onClick={(e) => {
                 e.stopPropagation()
                 openPanel('diff', project.id)
               }}
             >
+              {stats?.branch && <span className="branch">{stats.branch}</span>}
               <span>+{nf.format(stats?.added ?? 0)}</span>
               <span className="del">−{nf.format(stats?.removed ?? 0)}</span>
             </button>
@@ -333,16 +334,38 @@ function machineSub(m: MachineState): string {
   }
 }
 
+/** Each machine's own auto-approve (missing machineId means this one). */
+function AutoApproveToggle({ on, name, machineId, lock }: { on: boolean; name: string; machineId?: string; lock: string | null }) {
+  return (
+    <button
+      className={`icon-btn nodrag${on ? ' is-on' : ''}`}
+      aria-pressed={on}
+      disabled={!!lock}
+      title={lock ?? (on ? `Auto-approve is on for ${name}. Click to turn off.` : `Auto-approve on ${name}: allow permission prompts without asking`)}
+      onClick={(e) => {
+        e.stopPropagation()
+        void api.setAutoApprove(!on, machineId)
+      }}
+    >
+      <IconAutoApprove size={14} />
+    </button>
+  )
+}
+
 /** The root of one machine's part of the graph. Offline is a broken ring and an outline, never the signal color. */
 export function MachineNode({ data }: NodeProps<MachineNodeType>) {
   const m = data.machine
   const lock = useLock(m?.id)
+  const localAutoApprove = useStore((s) => s.autoApprove)
   if (!m) {
     return (
       <div className="node node-machine" title="This machine">
         <Glyph status="idle" size={24} variant="hub" />
         <div className="node-text">
           <span className="node-title">This PC</span>
+          <div className="node-actions">
+            <AutoApproveToggle on={localAutoApprove} name="this PC" lock={lock} />
+          </div>
         </div>
         <Handles />
       </div>
@@ -369,18 +392,7 @@ export function MachineNode({ data }: NodeProps<MachineNodeType>) {
         {m.outdated && <span className="node-sub">update Symphony on this machine</span>}
         {m.status !== 'pairing' && (
           <div className="node-actions">
-            <button
-              className={`icon-btn nodrag${m.autoApprove ? ' is-on' : ''}`}
-              aria-pressed={m.autoApprove}
-              disabled={!!lock}
-              title={m.autoApprove ? `Auto-approve is on for ${m.name}. Click to turn off.` : `Auto-approve on ${m.name}: allow permission prompts without asking`}
-              onClick={(e) => {
-                e.stopPropagation()
-                void api.setAutoApprove(!m.autoApprove, m.id)
-              }}
-            >
-              <IconAutoApprove size={14} />
-            </button>
+            <AutoApproveToggle on={m.autoApprove} name={m.name} machineId={m.id} lock={lock} />
             <button
               className="icon-btn nodrag"
               disabled={!!lock}

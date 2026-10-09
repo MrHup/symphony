@@ -38,10 +38,11 @@ export interface ViewerFile {
 
 /**
  * The one viewer used for git diffs, SKILL.md previews, MCP details and CLAUDE.md editing:
- * an optional file list on the left, a path bar, and a Monaco editor or diff editor.
+ * an optional file list on the left (with `side` above it), a path bar, and a Monaco editor or diff editor.
  */
 export function Viewer({
   files,
+  side,
   active,
   onSelect,
   bar,
@@ -51,6 +52,7 @@ export function Viewer({
   empty
 }: {
   files?: ViewerFile[]
+  side?: ReactNode
   active?: string
   onSelect?: (key: string) => void
   bar?: ReactNode
@@ -73,27 +75,30 @@ export function Viewer({
   return (
     <div className="viewer">
       {files && (
-        <div
-          className="viewer-files"
-          ref={listRef}
-          tabIndex={0}
-          onKeyDown={(e) => {
-            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-              e.preventDefault()
-              move(e.key === 'ArrowDown' ? 1 : -1)
-            }
-          }}
-        >
-          {files.map((f) => (
-            <button key={f.key} className={`viewer-file${f.key === active ? ' is-active' : ''}`} onClick={() => onSelect?.(f.key)} title={f.dir ? `${f.dir}/${f.name}` : f.name}>
-              {f.status && <span className="st">{f.status}</span>}
-              <span className="name">
-                {f.name}
-                {f.dir && <span className="dir">{f.dir}</span>}
-              </span>
-              {f.nums && <span className="nums">{f.nums}</span>}
-            </button>
-          ))}
+        <div className="viewer-side">
+          {side}
+          <div
+            className="viewer-files"
+            ref={listRef}
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault()
+                move(e.key === 'ArrowDown' ? 1 : -1)
+              }
+            }}
+          >
+            {files.map((f) => (
+              <button key={f.key} className={`viewer-file${f.key === active ? ' is-active' : ''}`} onClick={() => onSelect?.(f.key)} title={f.dir ? `${f.dir}/${f.name}` : f.name}>
+                {f.status && <span className="st">{f.status}</span>}
+                <span className="name">
+                  {f.name}
+                  {f.dir && <span className="dir">{f.dir}</span>}
+                </span>
+                {f.nums && <span className="nums">{f.nums}</span>}
+              </button>
+            ))}
+          </div>
         </div>
       )}
       <div className="viewer-main">
@@ -154,13 +159,40 @@ function splitPath(p: string) {
 export function DiffPanel({ panel }: { panel: Panel }) {
   const project = useStore((s) => s.projects[panel.targetId])
   const stats = useStore((s) => s.git[panel.targetId]) as GitStats | undefined
+  const lock = useLock(project?.machineId)
   const [active, setActive] = useState<string | undefined>()
   const [diff, setDiff] = useState<GitFileDiff | null>(null)
   const [sideBySide, setSideBySide] = useState(true)
+  const [branches, setBranches] = useState<string[]>([])
+  const [message, setMessage] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     void api.gitStats(panel.targetId).catch(() => undefined)
   }, [panel.targetId])
+
+  useEffect(() => {
+    api.gitBranches(panel.targetId).then(setBranches, () => setBranches([]))
+  }, [panel.targetId, stats?.branch])
+
+  /** Runs a git action; its error shows in the header until the next one. */
+  const run = async (action: () => Promise<void>): Promise<boolean> => {
+    setBusy(true)
+    setError(null)
+    try {
+      await action()
+      return true
+    } catch (err) {
+      setError(cleanError(err))
+      return false
+    } finally {
+      setBusy(false)
+    }
+  }
+  const commit = async () => {
+    if (await run(() => api.gitCommit(panel.targetId, message))) setMessage('')
+  }
 
   const files = stats?.files ?? []
   const current = files.find((f) => f.path === active) ?? files[0]
@@ -188,20 +220,60 @@ export function DiffPanel({ panel }: { panel: Panel }) {
   )
 
   if (!project) return null
+  const branch = stats?.branch
+  // A detached HEAD shows its commit, which is not in the branch list.
+  const choices = branch && !branches.includes(branch) ? [branch, ...branches] : branches
+  const canCommit = !!message.trim() && files.length > 0 && !busy && !lock
   return (
     <FloatingPanel
       panel={panel}
       machineId={project.machineId}
       title={`${project.name} · changes`}
-      meta={stats?.isRepo === false ? 'not a git repository' : `+${nf.format(stats?.added ?? 0)} −${nf.format(stats?.removed ?? 0)} · ${files.length} ${files.length === 1 ? 'file' : 'files'} · vs HEAD`}
+      meta={error ?? (stats?.isRepo === false ? 'not a git repository' : `+${nf.format(stats?.added ?? 0)} −${nf.format(stats?.removed ?? 0)} · ${files.length} ${files.length === 1 ? 'file' : 'files'} · vs HEAD`)}
       actions={
-        <button className="icon-btn" title="Refresh" onClick={() => void api.gitStats(panel.targetId).catch(() => undefined)}>
-          <IconRefresh />
-        </button>
+        <>
+          {branch && (
+            <select className="branch" value={branch} disabled={busy || !!lock} title={lock ?? 'Switch branch'} onChange={(e) => void run(() => api.gitSwitch(panel.targetId, e.target.value))}>
+              {choices.map((b) => (
+                <option key={b} value={b}>
+                  {b}
+                </option>
+              ))}
+            </select>
+          )}
+          <button className="icon-btn" title="Refresh" onClick={() => void api.gitStats(panel.targetId).catch(() => undefined)}>
+            <IconRefresh />
+          </button>
+        </>
       }
     >
       <Viewer
         files={list}
+        side={
+          stats?.isRepo && (
+            <form
+              className="commit"
+              onSubmit={(e) => {
+                e.preventDefault()
+                if (canCommit) void commit()
+              }}
+            >
+              <textarea
+                value={message}
+                rows={3}
+                placeholder="Commit message"
+                disabled={!!lock}
+                onChange={(e) => setMessage(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) e.currentTarget.form?.requestSubmit()
+                }}
+              />
+              <button className="btn primary" disabled={!canCommit} title={lock ?? `Stage every change listed and commit (${window.symphony.platform === 'darwin' ? '⌘' : 'Ctrl'}+Enter)`}>
+                Commit
+              </button>
+            </form>
+          )
+        }
         active={current?.path}
         onSelect={setActive}
         bar={

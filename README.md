@@ -55,13 +55,14 @@ on one machine can be tested without touching the network or the firewall.
 | Start work | Right-click a project, type a prompt, pick a model and its effort, **Start** (Ctrl/⌘+Enter) |
 | Set effort | The picker next to the model lists only the levels that model accepts (low, medium, high, extra-high, max) and is hidden for models without effort, such as Haiku. Each model remembers its own effort; "Default effort" leaves it to Claude Code |
 | Build a loop | The loop button on a project opens the loop editor (see Loops below) |
-| Approve automatically | The double-check button in the dock. While it is on (bone white, and "auto-approving" next to the Symphony mark), Claude Code permission prompts are allowed without asking, and any waiting ones are released. It is off every time Symphony starts |
+| Approve automatically | The double-check button on a machine node (This PC, or a remote machine). While it is on (bone white, and for this PC "auto-approving" next to the Symphony mark), Claude Code permission prompts on that machine are allowed without asking, and any waiting ones are released. It is off every time Symphony starts |
 | Dictate a prompt | The mic button in the prompt bubble, a session's reply box or a loop step. Click, speak (the words appear dimmed as you speak), click again; the text is cleaned up and inserted where the cursor was. Escape cancels while listening |
 | Attach images | Paste them (Ctrl/⌘+V) into the right-click prompt bubble or a session's reply box. Thumbnails appear above the text; hover one to remove it. A reply can be just images |
 | Watch or answer a session | Click its node. Approvals, questions and replies all happen in that view |
 | Watch a subagent | Click its node (it hangs off its session while it runs) |
 | See what a session made | Ask for it ("take a screenshot of the home screen"). Claude shows files with its `show_files` tool: images appear in the session view (click for the full-window viewer, ← → between images), PDFs and other files open in their default app. Images Claude reads itself, such as its own screenshots, appear under that tool call |
-| See uncommitted changes | Click the `+n −n` counts on a project |
+| See uncommitted changes | Click the branch and `+n −n` counts on a project |
+| Switch branch or commit | In that changes view: pick a branch in the header, or write a message and **Commit** (Ctrl/⌘+Enter). A commit stages every change listed, which is everything under the project folder |
 | Edit CLAUDE.md | Click the page icon on a project. Save with Ctrl/⌘+S |
 | Read a skill | Click it (Source or Rendered) |
 | Inspect an MCP server | Click it. Secret values are hidden |
@@ -184,8 +185,7 @@ loops (including human steps), the diff viewer, CLAUDE.md, skills, MCP, artifact
 fetched and opened here; `localhost` links cannot), and terminals if the remote machine allows
 them. The machine node carries that machine's auto-approve toggle, the folder browser for adding a
 project from its shared folders, a terminal button, and its battery when it runs on battery. The
-dock's auto-approve and the usage meter are this machine's only; remote machines stop polling
-usage while linked. A repo cloned on two machines is two separate projects.
+usage meter is this machine's only; remote machines stop polling usage while linked. A repo cloned on two machines is two separate projects.
 
 While linked, the remote machine's own window is read-only (enforced by its core, not only its
 UI), with a banner naming the orchestrator and a **Disconnect** button that always works. If the
@@ -244,7 +244,7 @@ remote machine's path. Then it runs the bundle. Every request, event and check i
 app runs in remote mode.
 
 Each remote machine logs what the orchestrator did there (sessions started, approvals answered,
-auto-approve toggled, CLAUDE.md saved, terminals opened); **Show the audit log** in its panel.
+auto-approve toggled, branches switched, commits, CLAUDE.md saved, terminals opened); **Show the audit log** in its panel.
 Either side can revoke the other.
 
 ### How it works
@@ -296,7 +296,7 @@ Either side can revoke the other.
 ## Auto-approve and dictation
 
 **Auto-approve** answers Claude Code's permission prompts with "allow" for every session and loop
-step while it is on. It does not answer Claude's questions, which still need you. It does not
+step on its machine while it is on; each machine node has its own toggle. It does not answer Claude's questions, which still need you. It does not
 override `ask` rules you set in Claude Code settings (those prompts are still asked), and deny rules
 are applied by Claude Code before Symphony is asked. Each auto-allowed action stays in the
 transcript as "auto-allowed".

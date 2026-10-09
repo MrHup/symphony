@@ -7,7 +7,7 @@ import { ControlBanner } from './components/ControlBanner'
 import { Lightbox } from './components/Files'
 import { FloatingPanel } from './components/FloatingPanel'
 import { Graph } from './components/Graph'
-import { IconAutoApprove, IconMeter, IconPlus, IconRemote, IconTerminal } from './components/icons'
+import { IconMeter, IconPlus, IconRemote, IconTerminal } from './components/icons'
 import { FolderBrowserPanel, PairingPanel } from './components/MachinePanels'
 import { NeedsYouButton, NeedsYouPanel, useNeedsYouShortcut } from './components/NeedsYou'
 import { RemotePanel } from './components/RemotePanel'
@@ -108,23 +108,6 @@ function AppMark() {
   )
 }
 
-/** This machine's auto-approve; each remote machine has its own toggle on its node. */
-function AutoApproveButton() {
-  const on = useStore((s) => s.autoApprove)
-  const control = useStore((s) => s.control)
-  return (
-    <button
-      className={`dock-btn${on ? ' is-on' : ''}`}
-      aria-pressed={on}
-      disabled={!!control}
-      title={on ? 'Auto-approve is on: permission prompts are allowed without asking. Click to turn off.' : 'Auto-approve: allow permission prompts without asking'}
-      onClick={() => void api.setAutoApprove(!on)}
-    >
-      <IconAutoApprove />
-    </button>
-  )
-}
-
 /** Remote machines: orchestrate others, or let one orchestrate this machine. */
 function RemoteButton() {
   const linked = useStore((s) => Object.keys(s.machines).length > 0 || !!s.control)
@@ -197,7 +180,6 @@ export function App() {
           <IconTerminal size={16} />
         </button>
         <UsageButton />
-        <AutoApproveButton />
         <RemoteButton />
         <NeedsYouButton />
       </div>

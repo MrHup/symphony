@@ -277,6 +277,12 @@ button {
 .diff-counts .del {
   color: var(--grey-2);
 }
+.diff-counts .branch {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .diff-counts.is-clean {
   color: var(--grey-1);
 }
@@ -634,7 +640,8 @@ kbd {
   color: var(--grey-2);
 }
 
-select.model {
+select.model,
+select.branch {
   max-width: 150px;
   min-width: 0;
   height: 28px;
@@ -645,7 +652,8 @@ select.model {
   padding: 0 6px;
   font-size: 12px;
 }
-select.model:hover {
+select.model:hover,
+select.branch:hover {
   color: var(--bone);
 }
 
@@ -1137,12 +1145,44 @@ select.model:hover {
   min-height: 0;
   display: flex;
 }
-.viewer-files {
+.viewer-side {
   width: 280px;
   flex: none;
+  display: flex;
+  flex-direction: column;
   border-right: 1px solid var(--line);
+}
+.viewer-files {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 6px 0;
+}
+.commit {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border-bottom: 1px solid var(--line);
+}
+.commit textarea {
+  resize: none;
+  padding: 6px 8px;
+  font-size: 12px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  outline: none;
+}
+.commit textarea:focus {
+  border-color: var(--grey-1);
+}
+.commit textarea::placeholder {
+  color: var(--grey-1);
+}
+.commit .btn {
+  justify-content: center;
 }
 .viewer-file {
   display: flex;
@@ -1675,7 +1715,7 @@ select.model:hover {
   font-size: 11px;
 }
 
-/* ---------- auto-approve ---------- */
+/* ---------- dock toggles ---------- */
 
 .dock-btn.is-on {
   background: var(--bone);

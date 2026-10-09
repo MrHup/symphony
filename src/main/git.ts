@@ -1,5 +1,5 @@
-// Uncommitted-change stats and file contents for the diff viewer. Compares the working tree
-// (including untracked files) with HEAD, which is what VS Code's Git view shows as "Changes".
+// Uncommitted-change stats and file contents for the diff viewer, plus branches and commits. Compares
+// the working tree (including untracked files) with HEAD, which is what VS Code's Git view shows as "Changes".
 import { open, readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { GitFileDiff, GitFileStat, GitStats } from '@shared/types'
@@ -12,9 +12,22 @@ function git(cwd: string, args: string[], timeoutMs = 20_000) {
   return run(gitPath(), ['-c', 'core.quotepath=off', ...args], { cwd, timeoutMs })
 }
 
+/** Like git(), but a failure throws git's own message. */
+async function gitOrThrow(cwd: string, args: string[], timeoutMs?: number): Promise<string> {
+  const res = await git(cwd, args, timeoutMs)
+  if (res.code !== 0) throw new Error((res.stderr || res.stdout).trim() || `git ${args[0]} failed`)
+  return res.stdout
+}
+
 async function baseRef(cwd: string): Promise<string> {
   const head = await git(cwd, ['rev-parse', '--verify', '--quiet', 'HEAD'])
   return head.code === 0 ? 'HEAD' : EMPTY_TREE
+}
+
+/** The checked-out branch, or the short commit hash when HEAD is detached. */
+async function currentBranch(cwd: string): Promise<string> {
+  const name = (await git(cwd, ['branch', '--show-current'])).stdout.trim()
+  return name || (await git(cwd, ['rev-parse', '--short', 'HEAD'])).stdout.trim()
 }
 
 async function looksBinary(path: string): Promise<boolean> {
@@ -47,7 +60,8 @@ export async function getStats(cwd: string): Promise<GitStats> {
   if (inside.code !== 0 || inside.stdout.trim() !== 'true') return { isRepo: false, added: 0, removed: 0, files: [] }
 
   const base = await baseRef(cwd)
-  const [numstat, nameStatus, untracked] = await Promise.all([
+  const [branch, numstat, nameStatus, untracked] = await Promise.all([
+    currentBranch(cwd),
     git(cwd, ['diff', base, '--numstat', '-z', '-M', '--relative']),
     git(cwd, ['diff', base, '--name-status', '-z', '-M', '--relative']),
     git(cwd, ['ls-files', '--others', '--exclude-standard', '-z'])
@@ -100,6 +114,7 @@ export async function getStats(cwd: string): Promise<GitStats> {
   files.sort((x, y) => x.path.localeCompare(y.path))
   return {
     isRepo: true,
+    branch,
     added: files.reduce((n, f) => n + f.added, 0),
     removed: files.reduce((n, f) => n + f.removed, 0),
     files
@@ -123,6 +138,29 @@ export async function getFileDiff(cwd: string, file: GitFileStat): Promise<GitFi
     }
   }
   return { path: file.path, original, modified, binary: false }
+}
+
+/** Local branches, then remote ones without a local branch yet (switching to one creates it). */
+export async function listBranches(cwd: string): Promise<string[]> {
+  const refs = await gitOrThrow(cwd, ['for-each-ref', '--format=%(refname)', 'refs/heads', 'refs/remotes'])
+  const names = refs
+    .split('\n')
+    .filter(Boolean)
+    .map((ref) => (ref.startsWith('refs/heads/') ? ref.slice('refs/heads/'.length) : ref.replace(/^refs\/remotes\/[^/]+\//, '')))
+  return [...new Set(names)].filter((n) => n !== 'HEAD')
+}
+
+export async function switchBranch(cwd: string, branch: string): Promise<void> {
+  if (branch.startsWith('-')) throw new Error('Not a branch name')
+  await gitOrThrow(cwd, ['switch', branch])
+}
+
+/** Stages every change under the project folder (what the diff viewer lists) and commits only those. */
+export async function commitAll(cwd: string, message: string): Promise<void> {
+  if (!message.trim()) throw new Error('Write a commit message')
+  await gitOrThrow(cwd, ['add', '-A', '--', '.'])
+  // Hooks and signing can take a while.
+  await gitOrThrow(cwd, ['commit', '-m', message.trim(), '--', '.'], 120_000)
 }
 
 /** "owner/repo" host of the origin remote, used to decide which gh account applies. */

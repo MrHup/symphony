@@ -44,17 +44,15 @@ function layout(s: State, moved: Record<string, Point>): { nodes: Node[]; edges:
     return color ? `accent-${color}` : undefined
   }
 
-  // One root per machine once there are remote machines: this one, then each remote machine, with its ~/.claude hub under it.
+  // One root per machine: this one, then each remote machine, with its ~/.claude hub under it.
   const hubIds = new Set<string>()
   const machineIds = new Set<string>()
   const skillsLeftEdge = new Map<string, number>()
   const roots: { machineId?: string; hubPos: Point }[] = [{ hubPos: s.hubPosition }]
-  if (remote.length) {
-    const lp = at(LOCAL_MACHINE_NODE, s.machinePosition)
-    pos.set(LOCAL_MACHINE_NODE, lp)
-    machineIds.add(LOCAL_MACHINE_NODE)
-    nodes.push({ id: LOCAL_MACHINE_NODE, type: 'machine', position: lp, className: tint(), data: { local: true } })
-  }
+  const lp = at(LOCAL_MACHINE_NODE, s.machinePosition)
+  pos.set(LOCAL_MACHINE_NODE, lp)
+  machineIds.add(LOCAL_MACHINE_NODE)
+  nodes.push({ id: LOCAL_MACHINE_NODE, type: 'machine', position: lp, className: tint(), data: { local: true } })
   for (const m of remote) {
     const id = machineNodeId(m.id)
     const mp = at(id, m.position)
@@ -76,7 +74,7 @@ function layout(s: State, moved: Record<string, Point>): { nodes: Node[]; edges:
     const userSkills = s.skills.filter((k) => !k.projectId && k.machineId === root.machineId)
     const userMcp = s.mcp.filter((m) => !m.projectId && m.machineId === root.machineId)
     nodes.push({ id: hubId, type: 'hub', position: hub, className: tint(root.machineId), data: { open, skills: userSkills.length, mcp: userMcp.length, machineId: root.machineId, offline } })
-    if (remote.length) edge(root.machineId ? machineNodeId(root.machineId) : LOCAL_MACHINE_NODE, hubId, false, true, offline)
+    edge(root.machineId ? machineNodeId(root.machineId) : LOCAL_MACHINE_NODE, hubId, false, true, offline)
     const rows = Math.min(SKILL_ROWS, Math.max(1, userSkills.length))
     const cols = Math.ceil(userSkills.length / SKILL_ROWS)
     skillsLeftEdge.set(hubId, hub.x - 240 - (cols - 1) * SKILL_COL_W)
@@ -115,7 +113,7 @@ function layout(s: State, moved: Record<string, Point>): { nodes: Node[]; edges:
       className: cls,
       data: { project, status, stats: s.git[project.id], busy, offline, machine: project.machineId ? s.machines[project.machineId] : undefined }
     })
-    if (remote.length) edge(project.machineId ? machineNodeId(project.machineId) : LOCAL_MACHINE_NODE, project.id, false, true, offline)
+    edge(project.machineId ? machineNodeId(project.machineId) : LOCAL_MACHINE_NODE, project.id, false, true, offline)
     const extras = [...s.skills.filter((k) => k.projectId === project.id), ...s.mcp.filter((m) => m.projectId === project.id)]
     extras.forEach((x, i) => {
       const xp = at(x.id, { x: p.x + 44, y: p.y + 104 + i * SKILL_DY })

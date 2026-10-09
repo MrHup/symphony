@@ -51,6 +51,10 @@ export interface InvokeApi {
   respondQuestion(sessionId: string, requestId: string, answers: Record<string, string>): Promise<string | null>
   gitStats(projectId: string): Promise<GitStats>
   gitFileDiff(projectId: string, file: GitFileStat): Promise<GitFileDiff>
+  gitBranches(projectId: string): Promise<string[]>
+  gitSwitch(projectId: string, branch: string): Promise<void>
+  /** Stages every change the diff viewer lists and commits it. */
+  gitCommit(projectId: string, message: string): Promise<void>
   readSkill(skillId: string): Promise<{ path: string; content: string }>
   readClaudeMd(projectId: string): Promise<{ path: string; content: string; exists: boolean }>
   writeClaudeMd(projectId: string, content: string): Promise<string>
@@ -138,6 +142,9 @@ export const INVOKE_METHODS: (keyof InvokeApi)[] = [
   'respondQuestion',
   'gitStats',
   'gitFileDiff',
+  'gitBranches',
+  'gitSwitch',
+  'gitCommit',
   'readSkill',
   'readClaudeMd',
   'writeClaudeMd',

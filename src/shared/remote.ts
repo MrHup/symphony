@@ -3,7 +3,7 @@
 import type { AppSnapshot, MachineHealth, MainEvent } from './types'
 
 /** Must match on both sides; a different app version is allowed. */
-export const PROTOCOL = 1
+export const PROTOCOL = 2
 export const DEFAULT_PORT = 47821
 /** TLS ALPN names: a normal link (pinned certificates only) and a pairing connection. */
 export const ALPN_LINK = 'symphony-link'
@@ -56,7 +56,7 @@ export type Frame =
 // ---------- which request goes where ----------
 
 /** Allowed from a controlled machine's own window: they only read. */
-export const READ_METHODS = new Set(['snapshot', 'transcript', 'gitStats', 'gitFileDiff', 'gitBranches', 'referenceList', 'readSkill', 'readClaudeMd', 'asset', 'openAsset'])
+export const READ_METHODS = new Set(['snapshot', 'transcript', 'gitStats', 'gitFileDiff', 'gitBranches', 'referenceList', 'readSkill', 'readClaudeMd', 'asset', 'openAsset', 'loopFiles', 'loopOpenFile'])
 
 /** Never routed to a remote machine. */
 export const PC_ONLY = new Set(['refreshUsage', 'micAccess', 'refineDictation', 'dictationLanguage', 'moveNode', 'setMachineColor', 'setOptimizePrompts', 'noteCreate', 'noteUpdate', 'noteDelete'])
@@ -67,6 +67,7 @@ export const PC_ONLY = new Set(['refreshUsage', 'micAccess', 'refineDictation', 
  */
 export const MACHINE_ARG: Record<string, number> = {
   addProject: 1,
+  loopCreate: 1,
   setDefaultModel: 1,
   setModelEffort: 2,
   refreshConfig: 0,
@@ -80,7 +81,7 @@ export const MACHINE_ARG: Record<string, number> = {
 export const NO_TIMEOUT = new Set(['loopStart', 'refreshConfig', 'listFolders'])
 
 /** Methods only the link serves on a remote machine (not part of the window's API there). */
-export const LINK_METHODS = new Set(['listFolders', 'fetchArtifact', 'fetchAsset'])
+export const LINK_METHODS = new Set(['listFolders', 'fetchLoopFile', 'fetchAsset'])
 
 /** Largest file sent over the link: base64 adds a third, and a frame holds 32 MB. */
 export const MAX_FILE_BYTES = 20 * 1024 * 1024

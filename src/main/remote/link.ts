@@ -11,9 +11,9 @@ import type { createConnection as netConnection } from 'node:net'
 import { connect, type ConnectionOptions, type TLSSocket } from 'node:tls'
 import { WebSocket } from 'ws'
 import { ALPN_LINK, ALPN_PAIR, DEFAULT_PORT, LINK_METHODS, MAX_FILE_BYTES, MAX_FRAME_BYTES, PAIR_TTL_MS, PC_ONLY, PROTOCOL, REMOTE_TERM_PREFIX, type ByeReason, type Frame, type Hello } from '@shared/remote'
-import type { FolderListing, LinkState, LoopArtifact, LoopDecision, MachineHealth, MainEvent, RemoteStatus } from '@shared/types'
+import type { FolderListing, LinkState, LoopDecision, LoopDraft, LoopFolder, MachineHealth, MainEvent, RemoteStatus } from '@shared/types'
 import type { SymphonyCore } from '../core'
-import { artifactPath, isMac, isViewable, isWindows, keepAwake, readHealth } from '../platform'
+import { isMac, isViewable, isWindows, keepAwake, readHealth } from '../platform'
 import { browse } from './mdns'
 import { pairingCode, peerFingerprint, type Identity } from './identity'
 import { LinkServer } from './server'
@@ -516,11 +516,11 @@ export class RemoteLink {
 
   private async execute(method: string, args: unknown[]): Promise<unknown> {
     // asset/openAsset are served by the orchestrator from its own copy, fetched with fetchAsset.
-    if (PC_ONLY.has(method) || method.startsWith('remote') || method === 'claudeLogin' || method === 'asset' || method === 'openAsset') throw new Error(`${method} is not available remotely`)
+    if (PC_ONLY.has(method) || method.startsWith('remote') || method === 'claudeLogin' || method === 'asset' || method === 'openAsset' || method === 'loopOpenFile') throw new Error(`${method} is not available remotely`)
     if (LINK_METHODS.has(method)) {
       if (method === 'listFolders') return this.listFolders(args[0] as string | undefined)
       if (method === 'fetchAsset') return this.fetchAsset(String(args[0]))
-      return this.fetchArtifact(args[0] as string, args[1] as LoopArtifact)
+      return this.fetchLoopFile(String(args[0]), String(args[1]), String(args[2]))
     }
     const term = (id: unknown) => `${REMOTE_TERM_PREFIX}${String(id)}`
     switch (method) {
@@ -540,6 +540,13 @@ export class RemoteLink {
       case 'termResize':
       case 'termKill':
         return this.core.invoke(method, [term(args[0]), ...args.slice(1)])
+      case 'loopCreate':
+      case 'loopUpdate':
+        await this.checkLoopFolders((args[method === 'loopCreate' ? 0 : 1] as LoopDraft).folders)
+        break
+      case 'loopStart':
+        await this.checkLoopFolders(this.core.loops.list().find((l) => l.id === args[0])?.folders ?? [])
+        break
     }
     this.auditRequest(method, args)
     return this.core.invoke(method, args)
@@ -579,7 +586,7 @@ export class RemoteLink {
       case 'removeProject':
         return audit('project removed', this.projectName(args[0] as string))
       case 'loopCreate':
-        return audit('loop created', this.projectName(args[0] as string))
+        return audit('loop created', (args[0] as LoopDraft).name)
       case 'loopUpdate':
       case 'loopDelete':
       case 'loopStart':
@@ -623,21 +630,25 @@ export class RemoteLink {
     return { path: real, parent: isRoot ? null : dirname(real), entries }
   }
 
-  /** A stored file (shown in a session or handed over in a loop), by its content hash. */
+  /** A loop may only use folders this machine shares; its temporary folders are its own. */
+  private async checkLoopFolders(folders: LoopFolder[]): Promise<void> {
+    for (const f of folders) if (f.path && !f.parentId) await this.insideShared(f.path)
+  }
+
+  /** A stored file (shown in a session), by its content hash. */
   private async fetchAsset(id: string): Promise<{ data: string; ext: string }> {
     const { data, ext } = await this.core.assets.read(id)
     return { data: data.toString('base64'), ext }
   }
 
-  /** A handed-over file, sent to the orchestrator to open there. Viewable types only. */
-  private async fetchArtifact(projectId: string, artifact: LoopArtifact): Promise<{ name: string; data: string } | { error: string }> {
-    const path = artifactPath(this.core.project(projectId).path, artifact)
-    if (!path) return { error: 'Nothing to open.' }
+  /** A file from a loop folder, sent to the orchestrator to open there. Viewable types only. */
+  private async fetchLoopFile(id: string, folderId: string, rel: string): Promise<{ name: string; data: string } | { error: string }> {
+    const path = this.core.loops.filePath(id, folderId, rel)
     if (!existsSync(path)) return { error: `${path} does not exist on ${this.name}.` }
     if (!isViewable(path)) return { error: `Only documents and images can be opened from ${this.name}; this file stays there (${path}).` }
     const info = await stat(path)
     if (info.size > MAX_FILE_BYTES) return { error: `${basename(path)} is too large to send (${Math.round(info.size / 1024 / 1024)} MB).` }
-    audit('artifact opened remotely', path)
+    audit('loop file opened remotely', path)
     return { name: basename(path), data: (await readFile(path)).toString('base64') }
   }
 }

@@ -303,7 +303,11 @@ export class MachineMirror {
   }
 }
 
-/** A remote snapshot without the fields this machine never takes from another: usage, machines, control. */
+/**
+ * A remote snapshot without the fields this machine never takes from another: usage, machines,
+ * control. Loops saved before loops were graphs are left out; the machine sends them converted.
+ */
 function clean(s: AppSnapshot): AppSnapshot {
-  return { ...structuredClone(s), usage: null, machines: [], control: null }
+  const c = structuredClone(s)
+  return { ...c, usage: null, machines: [], control: null, loops: c.loops.filter((l) => Array.isArray(l.edges)) }
 }

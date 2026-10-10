@@ -17,7 +17,8 @@ function Handles() {
       <Handle id="tr" type="target" position={Position.Right} isConnectable={false} />
       <Handle id="sr" type="source" position={Position.Right} isConnectable={false} />
       <Handle id="sl" type="source" position={Position.Left} isConnectable={false} />
-      {/* Under the glyph, so children stacked below hang from it in a straight line. */}
+      {/* Over and under the glyph, so children stacked above or below hang from it in a straight line. */}
+      <Handle id="st" type="source" position={Position.Top} isConnectable={false} style={{ left: 14 }} />
       <Handle id="sb" type="source" position={Position.Bottom} isConnectable={false} style={{ left: 14 }} />
     </>
   )
@@ -112,17 +113,6 @@ export function ProjectNode({ data }: NodeProps<ProjectNodeType>) {
             </button>
           )}
           <button
-            className="icon-btn nodrag"
-            title="New loop on this project"
-            disabled={!!lock}
-            onClick={(e) => {
-              e.stopPropagation()
-              useStore.getState().newLoop(project.id)
-            }}
-          >
-            <IconLoop />
-          </button>
-          <button
             className="icon-btn nodrag reveal"
             title="Remove from Symphony (the folder is not touched)"
             disabled={busy || !!lock}
@@ -154,7 +144,6 @@ export function SessionNode({ data }: NodeProps<SessionNodeType>) {
       <div className="node-text">
         <span className="node-title">{session.title.split('\n')[0]}</span>
         <span className="node-sub">
-          {session.kind === 'loop' && session.loopStep !== undefined && <span>step {session.loopStep + 1}</span>}
           {optimize ? <span style={{ fontFamily: 'var(--mono)' }}>/optimize-prompt</span> : <span>{session.effort ? `${model} · ${EFFORT_LABELS[session.effort].toLowerCase()}` : model}</span>}
           {session.identity && (
             <span className={`identity${session.identity.login ? '' : ' is-none'}`}>{session.identity.login ? `@${session.identity.login}` : 'no GitHub account'}</span>
@@ -171,18 +160,18 @@ export function SessionNode({ data }: NodeProps<SessionNodeType>) {
 export type LoopNodeType = Node<{ loop: LoopInfo; status: NodeStatus; offline?: boolean }, 'loop'>
 
 function loopSub(l: LoopInfo): string {
-  const at = l.current !== null ? l.steps[l.current] : undefined
+  const at = l.steps.find((s) => s.id === l.current)
   switch (l.state) {
     case 'draft':
       return `${l.steps.length} steps`
     case 'optimizing':
       return 'improving prompts'
     case 'running':
-      return `step ${(l.current ?? 0) + 1} of ${l.steps.length} · ${at?.title ?? ''}`
+      return at?.title ?? ''
     case 'waiting':
       return `your review · ${at?.title ?? ''}`
     case 'paused':
-      return `paused at step ${(l.current ?? 0) + 1}`
+      return `paused at ${at?.title ?? ''}`
     case 'done':
       return `done · ${l.runs} runs`
     case 'stopped':
@@ -194,10 +183,9 @@ function loopSub(l: LoopInfo): string {
 function StepPips({ loop }: { loop: LoopInfo }) {
   return (
     <span className="pips">
-      {loop.steps.map((s, i) => {
-        const cls = `pip ${s.kind}${i === loop.current ? ' is-current' : loop.current !== null && i < loop.current ? ' is-past' : ''}`
-        return <span key={s.id} className={cls} title={`${i + 1}. ${s.title}`} />
-      })}
+      {loop.steps.map((s) => (
+        <span key={s.id} className={`pip ${s.kind}${s.id === loop.current ? ' is-current' : ''}`} title={s.title} />
+      ))}
     </span>
   )
 }
@@ -374,6 +362,23 @@ function AutoApproveToggle({ on, name, machineId, lock }: { on: boolean; name: s
   )
 }
 
+/** A loop belongs to a machine and runs there. */
+function NewLoopButton({ name, machineId, lock }: { name: string; machineId?: string; lock: string | null }) {
+  return (
+    <button
+      className="icon-btn nodrag"
+      disabled={!!lock}
+      title={lock ?? `New loop on ${name}`}
+      onClick={(e) => {
+        e.stopPropagation()
+        useStore.getState().newLoop(machineId)
+      }}
+    >
+      <IconLoop />
+    </button>
+  )
+}
+
 /** The root of one machine's part of the graph. Offline is a broken ring and an outline, never the signal color. */
 export function MachineNode({ data }: NodeProps<MachineNodeType>) {
   const m = data.machine
@@ -387,6 +392,7 @@ export function MachineNode({ data }: NodeProps<MachineNodeType>) {
           <span className="node-title">This PC</span>
           <div className="node-actions">
             <AutoApproveToggle on={localAutoApprove} name="this PC" lock={lock} />
+            <NewLoopButton name="this PC" lock={lock} />
           </div>
         </div>
         <Handles />
@@ -415,6 +421,7 @@ export function MachineNode({ data }: NodeProps<MachineNodeType>) {
         {m.status !== 'pairing' && (
           <div className="node-actions">
             <AutoApproveToggle on={m.autoApprove} name={m.name} machineId={m.id} lock={lock} />
+            <NewLoopButton name={m.name} machineId={m.id} lock={lock} />
             <button
               className="icon-btn nodrag"
               disabled={!!lock}

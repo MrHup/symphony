@@ -18,7 +18,7 @@ import { extractOptimizedPrompt, OPTIMIZE_LINGER_MS, optimizeCommand } from './p
 import { refineDictation } from './dictation'
 import { addReference, listReferences, removeReference } from './references'
 import { claudeExecutable, claudeJsonPath, home, samePath, type Adapters } from './platform'
-import { AssetStore, assetIdsOfLoop } from './assets'
+import { AssetStore } from './assets'
 import { SessionManager } from './sessions'
 import { dataPath, loadState, saveState, type PersistedState } from './store'
 
@@ -38,7 +38,7 @@ export class SymphonyCore {
   readonly sessions: SessionManager
   readonly terminals: TerminalManager
   readonly loops: LoopManager
-  /** Files shown in sessions and handed over between loop steps (and, on an orchestrator, fetched from remote machines). */
+  /** Files shown in sessions (and, on an orchestrator, fetched from remote machines). */
   readonly assets: AssetStore
   readonly handlers: CoreApi
   /** Set while another Symphony controls this machine; the local window is then read-only. */
@@ -72,11 +72,8 @@ export class SymphonyCore {
       sessions: this.sessions,
       emit: (e) => this.emit(e),
       persist: () => this.persist(),
-      project: (id) => this.project(id),
       identityFor: (cwd) => this.identityFor(cwd),
-      defaultModel: () => this.state.defaultModel,
-      assets: this.assets,
-      releaseFiles: (ids) => this.releaseFiles(ids)
+      defaultModel: () => this.state.defaultModel
     })
     this.handlers = this.createHandlers()
   }
@@ -85,7 +82,7 @@ export class SymphonyCore {
   start(): void {
     this.state = loadState()
     this.sessions.restore(this.state.sessions)
-    this.loops.restore(this.state.loops)
+    this.loops.restore(this.state.loops, this.state.projects)
     void this.refreshGh()
     void this.gitLoop()
     void this.refreshAllConfig()
@@ -169,9 +166,9 @@ export class SymphonyCore {
   }
 
   /**
-   * Files a deleted session or loop referred to. They are deleted shortly after, in one batch,
-   * unless another session, loop or remote copy still refers to them (files are stored by content,
-   * so two sessions can share one).
+   * Files a deleted session referred to. They are deleted shortly after, in one batch, unless
+   * another session or remote copy still refers to them (files are stored by content, so two
+   * sessions can share one).
    */
   releaseFiles(ids: Iterable<string>): void {
     for (const id of ids) this.released.add(id)
@@ -187,7 +184,6 @@ export class SymphonyCore {
   private sweepFiles(candidates: string[], minAgeMs = 0): void {
     if (!candidates.length) return
     const referenced = this.sessions.assetRefs()
-    for (const l of this.loops.list()) for (const id of assetIdsOfLoop(l)) referenced.add(id)
     for (const id of this.extraFileRefs()) referenced.add(id)
     const removed = this.assets.sweep(candidates, referenced, minAgeMs)
     if (removed.length) console.log(`[assets] deleted ${removed.length} file(s) no longer used`)
@@ -445,7 +441,6 @@ export class SymphonyCore {
       snapshot: async () => this.snapshot(),
       addProject: (path) => this.addProject(path),
       removeProject: async (id) => {
-        for (const l of loops.list()) if (l.projectId === id) loops.delete(l.id)
         for (const s of sessions.list()) if (s.projectId === id) sessions.dismiss(s.id)
         this.state.projects = this.state.projects.filter((p) => p.id !== id)
         this.projectConfig.delete(id)
@@ -547,13 +542,14 @@ export class SymphonyCore {
       termWrite: async (id, data) => terminals.write(id, data),
       termResize: async (id, cols, rows) => terminals.resize(id, cols, rows),
       termKill: async (id) => terminals.kill(id),
-      loopCreate: async (projectId, draft) => loops.create(projectId, draft),
+      loopCreate: async (draft) => loops.create(draft),
       loopUpdate: async (id, draft) => loops.update(id, draft),
       loopDelete: async (id) => loops.delete(id),
       loopStart: (id) => loops.start(id),
       loopStop: async (id) => loops.stop(id),
       loopDecide: (id, decision) => loops.decide(id, decision),
-      openArtifact: (projectId, artifact) => this.adapters.openArtifact(project(projectId).path, artifact),
+      loopFiles: (id, folderId) => loops.files(id, folderId),
+      loopOpenFile: async (id, folderId, path) => this.adapters.openFile(loops.filePath(id, folderId, path)),
       asset: (_ownerId, assetId) => this.assets.dataUrl(assetId),
       openAsset: async (_ownerId, assetId) => {
         const path = this.assets.path(assetId)

@@ -95,8 +95,9 @@ interface Runtime {
   /** Streaming thinking/text items per parent, in block order, waiting for their final assistant block. */
   live: Map<string, TranscriptItem[]>
   idleTimer?: NodeJS.Timeout
-  /** Kept so a resumed process gets the same extra tools. */
+  /** Kept so a resumed process gets the same extra tools and folders. */
   tools?: SessionTools
+  dirs?: string[]
   /** Resolves true once the process is confirmed to run on the Claude subscription; messages wait for it. */
   ready?: Promise<boolean>
   onResult?: (text: string, isError: boolean) => void
@@ -119,8 +120,9 @@ export interface StartOptions {
   images?: ImageInput[]
   /** Extra tools for this session (a loop step's routing tool), auto-approved by name. */
   tools?: SessionTools
+  /** Folders besides cwd the session may read and write (a loop step's input and output). */
+  additionalDirectories?: string[]
   loopId?: string
-  loopStep?: number
   /** Called after every turn's result. */
   onResult?: (text: string, isError: boolean) => void
 }
@@ -197,12 +199,12 @@ export class SessionManager {
       status: 'working',
       createdAt: Date.now(),
       identity: opts.identity,
-      loopId: opts.loopId,
-      loopStep: opts.loopStep
+      loopId: opts.loopId
     }
     const rt = this.newRuntime(info, opts.env ?? {})
     rt.onResult = opts.onResult
     rt.tools = opts.tools
+    rt.dirs = opts.additionalDirectories
     this.runtimes.set(info.id, rt)
     this.emit({ type: 'session', session: info })
     this.onSessionsChanged()
@@ -411,6 +413,7 @@ export class SessionManager {
       prompt: input,
       options: {
         cwd: rt.info.cwd,
+        additionalDirectories: rt.dirs,
         model: rt.info.model,
         effort: rt.info.effort,
         resume: rt.info.sdkSessionId,

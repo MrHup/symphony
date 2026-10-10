@@ -101,10 +101,8 @@ function layout(s: State, moved: Record<string, Point>): { nodes: Node[]; edges:
     const p = at(project.id, project.position)
     pos.set(project.id, p)
     const mine = sessions.filter((x) => x.projectId === project.id)
-    const myLoops = loops.filter((l) => l.projectId === project.id)
-    const loopStatuses = myLoops.map((l) => loopStatus(l, s.sessions)).filter((st) => st !== 'idle')
-    const status = shown(rollup([...mine.map((x) => x.status), ...loopStatuses]), offline)
-    const busy = mine.some((x) => x.status !== 'finished') || myLoops.some((l) => ['optimizing', 'running', 'waiting', 'paused'].includes(l.state))
+    const status = shown(rollup(mine.map((x) => x.status)), offline)
+    const busy = mine.some((x) => x.status !== 'finished')
     const cls = tint(project.machineId)
     nodes.push({
       id: project.id,
@@ -122,18 +120,24 @@ function layout(s: State, moved: Record<string, Point>): { nodes: Node[]; edges:
       nodes.push(isMcp ? { id: x.id, type: 'mcp', position: xp, className: cls, data: { mcp: x, offline } } : { id: x.id, type: 'skill', position: xp, className: cls, data: { skill: x, offline } })
       edge(project.id, x.id, false, true, offline)
     })
-    // Loops sit below the project, under its own skills and MCP servers, each with room for the
-    // sessions it currently shows (its running step, or prompts being improved).
-    let loopY = p.y + 112 + extras.length * SKILL_DY
-    myLoops.forEach((l) => {
-      const count = sessions.filter((x) => x.anchorId === l.id).length
-      const lp = at(l.id, l.position ?? { x: p.x + 44, y: loopY })
-      loopY += LOOP_DY + count * LOOP_SESSION_DY
-      pos.set(l.id, lp)
-      const st = shown(loopStatus(l, s.sessions), offline)
-      nodes.push({ id: l.id, type: 'loop', position: lp, className: cls, data: { loop: l, status: st, offline } })
-      edge(project.id, l.id, needsUser(st), st === 'finished' || st === 'idle', offline)
-    })
+  }
+
+  // Loops belong to a machine: they stack upward from its node, each with room below it for the
+  // sessions it currently shows (its running step, or prompts being improved).
+  const loopTop = new Map<string, number>()
+  for (const l of loops) {
+    const machine = l.machineId ? machineNodeId(l.machineId) : LOCAL_MACHINE_NODE
+    const m = pos.get(machine)
+    if (!m) continue
+    const offline = off(l.machineId)
+    const count = sessions.filter((x) => x.anchorId === l.id).length
+    const top = (loopTop.get(machine) ?? m.y - 20) - LOOP_DY - count * LOOP_SESSION_DY
+    loopTop.set(machine, top)
+    const lp = at(l.id, l.position ?? { x: m.x + 44, y: top })
+    pos.set(l.id, lp)
+    const st = shown(loopStatus(l, s.sessions), offline)
+    nodes.push({ id: l.id, type: 'loop', position: lp, className: tint(l.machineId), data: { loop: l, status: st, offline } })
+    edge(machine, l.id, needsUser(st), st === 'finished' || st === 'idle', offline)
   }
 
   // Sessions hang off their anchor; config sessions on user skills sit left of the skill grid.
@@ -197,10 +201,14 @@ function layout(s: State, moved: Record<string, Point>): { nodes: Node[]; edges:
     const a = pos.get(e.source)
     const b = pos.get(e.target)
     if (!a || !b) continue
-    // Children stacked under their parent (MCP under a hub; a hub under its machine; skills, MCP and loops under a project) hang from its bottom.
+    // Children stacked under their parent (MCP under a hub; a hub under its machine; skills and MCP under a project) hang from its bottom; loops stacked over their machine, from its top.
     const below = b.y > a.y + 40 && b.x >= a.x - 20 && b.x < a.x + 160
+    const above = b.y < a.y - 40 && b.x >= a.x - 20 && b.x < a.x + 160
     if ((hubIds.has(e.source) && mcpIds.has(e.target)) || ((s.projects[e.source] || s.loops[e.source] || machineIds.has(e.source)) && below)) {
       e.sourceHandle = 'sb'
+      e.targetHandle = 'tl'
+    } else if (machineIds.has(e.source) && above) {
+      e.sourceHandle = 'st'
       e.targetHandle = 'tl'
     } else if (b.x < a.x - 40) {
       e.sourceHandle = 'sl'

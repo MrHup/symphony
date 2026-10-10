@@ -107,8 +107,8 @@ interface State {
   setOptimizePrompts(on: boolean): void
   /** Open a new terminal in a project's folder, or a machine's home folder when projectId is null. */
   openTerminal(projectId: string | null, machineId?: string): void
-  /** Open the loop editor for a new loop on a project. */
-  newLoop(projectId: string): void
+  /** Open the loop editor for a new loop on a machine (this one when machineId is unset). */
+  newLoop(machineId?: string): void
   /** Fetch a transcript once; `force` fetches it again (after a remote machine resyncs). */
   loadTranscript(sessionId: string, force?: boolean): Promise<void>
 }
@@ -131,7 +131,7 @@ const PANEL_SIZES: Record<PanelKind, { w: number; h: number }> = {
   claudemd: { w: 820, h: 700 },
   login: { w: 380, h: 250 },
   terminal: { w: 820, h: 460 },
-  loop: { w: 720, h: 760 },
+  loop: { w: 860, h: 820 },
   usage: { w: 400, h: 300 },
   remote: { w: 560, h: 720 },
   folders: { w: 520, h: 560 },
@@ -347,7 +347,7 @@ export const useStore = create<State>((set, get) => ({
               case 'agent':
                 return !!agents[p.targetId]
               case 'loop':
-                return p.targetId.startsWith('new:') ? !!projects[p.targetId.slice(4).split('#')[0]] : !!loops[p.targetId]
+                return p.targetId.startsWith('new:') ? p.targetId.slice(4).split('#')[0] !== e.id : !!loops[p.targetId]
               case 'diff':
               case 'claudemd':
                 return !!projects[p.targetId]
@@ -453,8 +453,8 @@ export const useStore = create<State>((set, get) => ({
     void api.setDefaultModel(model, machineId)
   },
 
-  newLoop(projectId) {
-    get().openPanel('loop', `new:${projectId}#${++terminalCount}`)
+  newLoop(machineId) {
+    get().openPanel('loop', `new:${machineId ?? 'local'}#${++terminalCount}`)
   },
 
   openTerminal(projectId, machineId) {
@@ -611,11 +611,12 @@ export function needsYou(s: StoreState): NeedsItem[] {
   }
   for (const l of Object.values(s.loops)) {
     if (l.state !== 'waiting' && l.state !== 'paused') continue
+    const step = l.steps.find((x) => x.id === l.current)?.title ?? ''
     items.push({
       key: l.id,
       machine: machineName(l.machineId),
-      project: projectName(l.projectId),
-      summary: `${l.name} · ${l.state === 'waiting' ? `your review at step ${(l.current ?? 0) + 1}` : `paused at step ${(l.current ?? 0) + 1}`}`,
+      project: '',
+      summary: `${l.name} · ${l.state === 'waiting' ? `your review: ${step}` : `paused at ${step}`}`,
       since: s.waitingSince[l.id] ?? l.createdAt,
       offline: offline(l.machineId),
       open: () => useStore.getState().openPanel('loop', l.id)

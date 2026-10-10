@@ -6,7 +6,7 @@ import { IconClose, IconDoc } from './icons'
 
 const isImage = (f: AssetRef) => f.mediaType.startsWith('image/')
 
-const sizeText = (n: number) => (n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`)
+export const sizeText = (n: number) => (n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`)
 
 /** Full images, by asset id: fetched once per window (a remote one crosses the link once). */
 const loaded = new Map<string, Promise<string>>()
@@ -41,9 +41,9 @@ function useFull(ownerId: string, file: AssetRef | undefined, wanted: boolean): 
 }
 
 /**
- * Files shown in a session or handed over in a loop. Images appear as thumbnails and open in the
- * viewer; PDFs and other files open in this machine's default app. `ownerId` is the session or
- * loop they belong to, which tells Symphony which machine has them.
+ * Files shown in a session. Images appear as thumbnails and open in the viewer; PDFs and other
+ * files open in this machine's default app. `ownerId` is the session they belong to, which tells
+ * Symphony which machine has them.
  */
 export function FileGallery({ ownerId, files, compact }: { ownerId: string; files: AssetRef[]; compact?: boolean }) {
   const [error, setError] = useState<string | null>(null)
@@ -88,7 +88,7 @@ export function FileGallery({ ownerId, files, compact }: { ownerId: string; file
  * Not a <button>: looking is allowed while actions are disabled (a read-only window, an offline
  * machine), and the disabled fieldset around a loop's review card would disable buttons inside it.
  */
-function Viewable({ className, title, onOpen, children }: { className: string; title: string; onOpen: () => void; children: React.ReactNode }) {
+export function Viewable({ className, title, onOpen, children }: { className: string; title: string; onOpen: () => void; children: React.ReactNode }) {
   return (
     <div
       role="button"

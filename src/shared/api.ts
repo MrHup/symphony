@@ -14,9 +14,9 @@ import type {
   MachineColor,
   EffortLevel,
   ImageInput,
-  LoopArtifact,
   LoopDecision,
   LoopDraft,
+  LoopFile,
   LoopInfo,
   ReferenceFile,
   RemoteStatus,
@@ -86,16 +86,19 @@ export interface InvokeApi {
   termWrite(id: string, data: string): Promise<void>
   termResize(id: string, cols: number, rows: number): Promise<void>
   termKill(id: string): Promise<void>
-  loopCreate(projectId: string, draft: LoopDraft): Promise<LoopInfo>
+  /** A loop on a machine (this one when machineId is missing); its folder paths are paths there. */
+  loopCreate(draft: LoopDraft, machineId?: string): Promise<LoopInfo>
   /** Only while the loop is not running. */
   loopUpdate(id: string, draft: LoopDraft): Promise<LoopInfo>
   loopDelete(id: string): Promise<void>
-  /** Starts a draft/stopped/done loop from step 1, or resumes a paused one at its current step. */
+  /** Starts a draft/stopped/done loop at its start step, or resumes a paused one at its current step. */
   loopStart(id: string): Promise<void>
   loopStop(id: string): Promise<void>
   loopDecide(id: string, decision: LoopDecision): Promise<void>
-  /** Opens a handed-over file in its default app, or a URL in the browser. */
-  openArtifact(projectId: string, artifact: LoopArtifact): Promise<string | null>
+  /** The files in one of a loop's folders, for review. */
+  loopFiles(id: string, folderId: string): Promise<LoopFile[]>
+  /** Opens a file from a loop folder in this machine's default app (viewable types only). Returns an error or null. */
+  loopOpenFile(id: string, folderId: string, path: string): Promise<string | null>
   /**
    * A stored file as a data URL, for viewing. `ownerId` is the session or loop it belongs to (it
    * says which machine has it); a remote file is fetched once and kept here.
@@ -182,7 +185,8 @@ export const INVOKE_METHODS: (keyof InvokeApi)[] = [
   'loopStart',
   'loopStop',
   'loopDecide',
-  'openArtifact',
+  'loopFiles',
+  'loopOpenFile',
   'asset',
   'openAsset',
   'setAutoApprove',

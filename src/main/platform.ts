@@ -7,8 +7,7 @@ import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { homedir, hostname } from 'node:os'
-import { dirname, extname, isAbsolute, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { dirname, extname, join } from 'node:path'
 import type { MachineHealth } from '@shared/types'
 
 export const isWindows = process.platform === 'win32'
@@ -191,7 +190,7 @@ export function claudeExecutable(): string | undefined {
 }
 
 /**
- * File types that open in a viewer, never as a program. Artifact paths come from agent output, and
+ * File types that open in a viewer, never as a program. Loop folders hold agent output, and
  * "open with the default app" would run executables and scripts (.exe, .bat, .ps1, and on Windows
  * even .js and .vbs through Windows Script Host), so everything else is only shown in its folder.
  */
@@ -202,31 +201,14 @@ const VIEWABLE = new Set([
 
 export const isViewable = (path: string) => VIEWABLE.has(extname(path).toLowerCase())
 
-/** An artifact's file path, absolute or relative to the project folder; null for a link that is not a file. */
-export function artifactPath(baseDir: string, target: { path?: string; url?: string }): string | null {
-  const path = target.url && /^file:/i.test(target.url) ? fileURLToPath(target.url) : target.path
-  if (!path) return null
-  return isAbsolute(path) ? path : resolve(baseDir, path)
-}
-
-/** Open a handed-over file or link. Returns an error message, or null on success. */
-export async function openArtifact(baseDir: string, target: { path?: string; url?: string }): Promise<string | null> {
-  if (target.url && !/^file:/i.test(target.url)) {
-    if (/^https?:\/\//i.test(target.url)) {
-      await shell.openExternal(target.url)
-      return null
-    }
-    return 'Only http, https and file links can be opened.'
-  }
-  const full = artifactPath(baseDir, target)
-  if (!full) return 'Nothing to open.'
-  if (!existsSync(full)) return `${full} does not exist.`
-  if (!isViewable(full)) {
-    shell.showItemInFolder(full)
+/** Open a file from a loop folder: viewable types in their default app, anything else only shown in its folder. Returns an error message, or null. */
+export async function openFile(path: string): Promise<string | null> {
+  if (!existsSync(path)) return `${path} does not exist.`
+  if (!isViewable(path)) {
+    shell.showItemInFolder(path)
     return null
   }
-  const err = await shell.openPath(full)
-  return err || null
+  return (await shell.openPath(path)) || null
 }
 
 /** macOS asks the user once for microphone access; Windows grants it through its own privacy settings. */
@@ -245,7 +227,8 @@ export interface Adapters {
   openExternal(url: string): void
   /** Opens a local file in its default app; returns an error message or null. */
   openPath(path: string): Promise<string | null>
-  openArtifact(baseDir: string, target: { path?: string; url?: string }): Promise<string | null>
+  /** Opens a file from a loop folder (see openFile); returns an error message or null. */
+  openFile(path: string): Promise<string | null>
   micAccess(): Promise<boolean>
   /** A small preview of an image or PDF as a data URL, or null when none can be made. */
   thumbnail(path: string, mediaType: string): Promise<string | null>
@@ -281,7 +264,7 @@ export function electronAdapters(win: () => BrowserWindow | null): Adapters {
     },
     openExternal: (url) => void shell.openExternal(url),
     openPath: async (path) => (await shell.openPath(path)) || null,
-    openArtifact,
+    openFile,
     micAccess: ensureMicAccess,
     thumbnail
   }

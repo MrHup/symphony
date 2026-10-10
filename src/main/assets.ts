@@ -1,13 +1,13 @@
-// Files shown in a session (show_files, images a tool returned) or handed over between loop steps
-// are copied here at that moment, named by the SHA-256 of their content. Transcripts and handoffs
-// carry only a reference and a small preview, so they stay small, and what you review cannot change
-// afterwards. An orchestrator keeps the files it fetched from remote machines in its own store.
+// Files shown in a session (show_files, images a tool returned) are copied here at that moment,
+// named by the SHA-256 of their content. Transcripts carry only a reference and a small preview, so
+// they stay small, and what you review cannot change afterwards. An orchestrator keeps the files it
+// fetched from remote machines in its own store.
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, isAbsolute, join, resolve } from 'node:path'
 import { MAX_FILE_BYTES } from '@shared/remote'
-import type { AssetRef, LoopInfo, TranscriptItem } from '@shared/types'
+import type { AssetRef, TranscriptItem } from '@shared/types'
 
 /** File types that can be shown: images inline, the rest opened in their default app. */
 const MEDIA: Record<string, string> = {
@@ -32,7 +32,7 @@ const MEDIA: Record<string, string> = {
 }
 const EXT: Record<string, string> = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/gif': '.gif', 'image/webp': '.webp' }
 
-/** Most files one show_files call or one handover takes. */
+/** Most files one show_files call takes. */
 export const MAX_FILES = 20
 
 export const mediaTypeOf = (path: string): string | null => MEDIA[extname(path).toLowerCase()] ?? null
@@ -40,11 +40,6 @@ export const mediaTypeOf = (path: string): string | null => MEDIA[extname(path).
 /** The stored files a transcript refers to: files shown with show_files and images tools returned. */
 export function assetIdsIn(items: TranscriptItem[]): string[] {
   return items.flatMap((i) => (i.kind === 'files' ? i.files : i.kind === 'tool' ? (i.result?.files ?? []) : []).map((f) => f.id))
-}
-
-/** The stored files a loop's handoffs refer to. */
-export function assetIdsOfLoop(l: LoopInfo): string[] {
-  return l.history.flatMap((h) => h.artifacts.flatMap((a) => (a.asset ? [a.asset.id] : [])))
 }
 
 export class AssetStore {

@@ -54,7 +54,7 @@ on one machine can be tested without touching the network or the firewall.
 | Check Claude usage | The meter in the bottom-left dock shows the 5-hour, weekly and weekly-per-model (Fable) windows as bars; click it for exact percentages and reset times |
 | Start work | Right-click a project, type a prompt, pick a model and its effort, **Start** (Ctrl/⌘+Enter) |
 | Set effort | The picker next to the model lists only the levels that model accepts (low, medium, high, extra-high, max) and is hidden for models without effort, such as Haiku. Each model remembers its own effort; "Default effort" leaves it to Claude Code |
-| Build a loop | The loop button on a project opens the loop editor (see Loops below) |
+| Build a loop | The loop button on a machine node (This PC, or a remote machine) opens the loop editor for a loop on that machine (see Loops below) |
 | Approve automatically | The double-check button on a machine node (This PC, or a remote machine). While it is on (bone white, and for this PC "auto-approving" next to the Symphony mark), Claude Code permission prompts on that machine are allowed without asking, and any waiting ones are released. It is off every time Symphony starts |
 | Dictate a prompt | The mic button in the prompt bubble, a session's reply box or a loop step. Click, speak (the words appear dimmed as you speak), click again; the text is cleaned up and inserted where the cursor was. Escape cancels while listening |
 | Attach images | Paste them (Ctrl/⌘+V) into the right-click prompt bubble or a session's reply box. Thumbnails appear above the text; hover one to remove it. A reply can be just images |
@@ -103,57 +103,65 @@ node stays so you can open it.
 
 ## Loops
 
-A loop chains prompts on one project and repeats them until its last step moves forward. Each
-step is either an **agent step** (a prompt that runs as its own Claude Code session) or a **human
-review** (you decide). Example: build the report, review it against the design, code-review the
-changes, then you approve.
+A loop is a graph of steps that belongs to one machine and runs there, until it reaches a step with
+no way out. Each step is either an **agent step** (a prompt that runs as its own Claude Code
+session) or a **human review** (you decide). Example: build the report, check it against the
+design, and you approve; the check can send the work back to the build. Create a loop with the loop
+button on a machine node; its node sits above that machine on the graph.
 
-- **Routing.** Every agent step ends by calling a `loop_route` tool that Symphony gives it:
-  `forward` hands the work to the next step, `back` (with a step number) sends it to an earlier
-  step, or reruns its own, with a summary of what must change. Agents cannot end a loop early;
-  the loop ends only when the last step moves forward, so a final human review cannot be
-  skipped. At a human review the loop node turns into the orange square, and the loop panel
-  shows your instructions, what the previous step handed over, and its files and links. You
-  approve (continue, or finish if it is the last step), send the work back to an earlier step
-  with notes, or stop.
-- **Handoffs.** Steps run in fresh sessions, so each one starts with the loop's step list, the
-  last few moves, and the latest handoff (the summary plus artifacts: file paths and URLs). Work
-  sent back arrives as "address this first". Images pasted into a step (for example design
-  references) go with every run of that step.
+- **The editor.** The loop panel holds the loop's graph. Add agent steps, human reviews and
+  folders, drag them into place, and connect them: from a step's right side to the step that comes
+  next, and from its `session`, `input` or `output` handle to a folder. Click a step, folder or
+  connection to edit or remove it below the graph. **Start here** on a step makes it the one every
+  run starts at. A new loop starts as one agent step and one review, wired to three folders.
+- **Folders.** Steps share work only through folders; nothing else is handed over. Every agent step
+  has a **session folder** (its working folder: the session's CLAUDE.md, settings and GitHub
+  identity come from there), an **input folder** it reads from (not its session folder), and an
+  **output folder** it writes to. A human review has an input folder: what you review. Several
+  steps can use one folder, so two steps can write to one output folder that a third reads. A
+  folder is **temporary** (created for the loop in Symphony's data folder on that machine, kept
+  between runs, deleted with the loop) or an **existing folder** you pick by its path on that
+  machine (a remote machine accepts only paths inside its shared folders). **+ Subfolder** nests a
+  folder inside another; it is temporary when the folder it lives in is.
+- **Edges and prompts.** Click a step-to-step edge to give it a prompt. When the loop moves along
+  that edge, the prompt goes in front of the next step's own prompt. Each agent step's first message
+  also gives it the paths of its input and output folders, and the session may read and write both.
+- **Routing.** A step with no way out finishes the loop when it ends; a step with one way out moves
+  on along it. An agent step with several ways out picks one by calling the `loop_route` tool
+  Symphony gives it, with the number of the next step. At a human review the loop node turns into
+  the orange square, and the loop panel shows your instructions and the files in the review's input
+  folder (click one to open it here, also from a remote machine). You approve (the loop moves on,
+  or finishes if the review has no way out; with several ways out you pick one), or send the loop
+  back to an agent step it has already run, with a prompt that goes in front of that step's own.
 - **Prompt improvement.** When a loop starts, all agent-step prompts go through `/optimize-prompt`
-  in parallel, with a note that they are loop steps. The results are cached and reused on later
-  runs until you edit the step. Expand a step in the loop panel to see both versions.
+  in parallel, each in its step's session folder, with a note that they are loop steps. The results
+  are cached and reused on later runs until you edit the step. Click a step while the loop runs to
+  see both versions.
 - **Limits and pauses.** A loop pauses after a number of agent runs in a row without a human
-  decision (12 by default, set in the editor). It also pauses when a step ends without routing
-  even after one reminder, when you stop a step's session, or when Symphony closes mid-step. A
-  paused loop asks you to continue, rerun the step, send the work back, or stop.
-- **On the graph.** The loop node hangs under its project, with markers for its steps (circles
-  for agent steps, squares for human reviews; the current one is white). Only the running step's
-  session is shown, under the loop; earlier runs are listed in the loop's history with "Open
-  session".
-- **Reviewing artifacts.** Files a step hands over (a file, a folder, or a pattern such as
-  `out/*.png`) are copied when the step routes, so the review shows exactly what the step produced.
-  Images appear as a gallery in the review card, with the full-window viewer; PDFs and other
-  documents open in their default app. Links open in the browser. Files that cannot be shown
-  (scripts, programs) stay as paths and are only shown in their folder, because opening one would
-  run it.
+  decision (12 by default, set in the editor). It also pauses when a step with several ways out
+  ends without routing even after one reminder, when you stop a step's session, when a step's
+  existing folder is missing, or when Symphony closes mid-step. A paused loop asks you to continue,
+  rerun the step, send the loop back, or stop.
+- **On the graph.** Only the running step's session is shown, under the loop node; earlier runs
+  are listed in the loop's history with "Open session". Loops saved before loops were graphs load
+  as a chain of their steps, on their old project's machine, with the project folder as every agent
+  step's session folder; give their steps input and output folders before running them again.
 
 ## Files shown in sessions
 
 Every session (except the optimize step) has a `show_files` tool, and its system prompt says that
 the user watches from Symphony's window, possibly on another computer, so a file only reaches them
-through that tool. Shown and handed-over files are copied into an asset store in Symphony's data
-folder, named by the SHA-256 of their content (images, PDFs, HTML and text; up to 20 files at a
-time, 20 MB each). Transcripts and handoffs carry only a reference and a small preview made with
+through that tool. Shown files are copied into an asset store in Symphony's data folder, named
+by the SHA-256 of their content (images, PDFs, HTML and text; up to 20 files at a time, 20 MB
+each). Transcripts carry only a reference and a small preview made with
 Electron's `nativeImage` (PDF previews come from the OS thumbnailer on macOS and Windows). For a
 remote machine, the orchestrator fetches each file once, checks it against its hash, keeps it in
 its own store, and fetches new files as soon as they appear, so they can still be reviewed while
 that machine sleeps.
 
 Files are deleted with what showed them: removing a session (or its project) deletes its files,
-and deleting a loop or running it again deletes the files its handoffs carried, unless another
-session or loop still refers to the same file. The orchestrator records which remote session or
-loop each of its copies belongs to (`remote-files.json`), and deletes a copy once those are gone,
+unless another session still refers to the same file. The orchestrator records which remote
+session each of its copies belongs to (`remote-files.json`), and deletes a copy once those are gone,
 including ones removed while the link was down (noticed at the resync) or when the machine is
 revoked. A minute after startup, a sweep deletes stored files that nothing refers to and that are
 older than ten minutes, in case Symphony quit in the middle of a cleanup.
@@ -182,9 +190,9 @@ Set up, once per remote machine:
 On the orchestrator each remote machine is its own root on the graph, with its `~/.claude` hub and
 projects under it; remote projects carry the machine's name. Everything works as for local
 projects: the prompt pipeline with live thinking and tool calls, approvals and questions, replies,
-loops (including human steps), the diff viewer, CLAUDE.md, skills, MCP, artifacts (files are
-fetched and opened here; `localhost` links cannot), and terminals if the remote machine allows
-them. The machine node carries that machine's auto-approve toggle, the folder browser for adding a
+loops (including human steps; files in their folders are fetched and opened here), the diff
+viewer, CLAUDE.md, skills, MCP, and terminals if the remote machine allows them. The machine node
+carries that machine's auto-approve toggle, a button for a new loop on it, the folder browser for adding a
 project from its shared folders, a terminal button, and its battery when it runs on battery. The
 usage meter is this machine's only; remote machines stop polling usage while linked. A repo cloned on two machines is two separate projects.
 
@@ -287,8 +295,8 @@ Either side can revoke the other.
 - **Routing.** Projects, sessions and loops have UUIDs, so the orchestrator keeps a table of which
   machine owns each. IDs that repeat across machines (skills, MCP servers, the `~/.claude` hub,
   terminals) carry a machine prefix in the orchestrator's window, removed before forwarding.
-  Requests that name nothing a machine owns (adding a project, default model, auto-approve, GitHub
-  sign-in) take an explicit machine id. Positions of remote nodes are the orchestrator's own and
+  Requests that name nothing a machine owns (adding a project, creating a loop, default model,
+  auto-approve, GitHub sign-in) take an explicit machine id. Positions of remote nodes are the orchestrator's own and
   never cross the link.
 - **Power.** While a remote machine has sessions or loops running, it prevents idle sleep
   (`powerSaveBlocker`). A closed lid still sleeps it; its sessions then stop and resume on reply,
@@ -364,14 +372,14 @@ with your own environment, so a `claude` you run there yourself is not covered.
 |---|---|
 | `src/main/platform.ts` | **All platform-specific code**: config paths, PATH repair, process spawning, gh and git lookup, the git credential environment, window chrome, the bundled Claude binary path |
 | `src/main/sessions.ts` | Runs sessions through the Agent SDK; turns the stream into node status and transcript items; holds approvals and questions until answered; the `show_files` tool |
-| `src/main/assets.ts` | The asset store: files shown in sessions and handed over in loops, by content hash |
+| `src/main/assets.ts` | The asset store: files shown in sessions, by content hash |
 | `src/renderer/src/components/Files.tsx` | File gallery and the full-window image viewer |
 | `src/main/pipeline.ts` | `/optimize-prompt` command and extraction of the optimized prompt |
 | `src/main/claudeConfig.ts` | Inspector query, skill discovery, MCP status, CLAUDE.md read/write |
 | `src/main/git.ts` | Change counts and HEAD/working-tree contents (includes untracked files, like VS Code) |
 | `src/main/github.ts` | gh accounts, per-session identity, in-app device login |
 | `src/main/terminals.ts` | One pseudo-terminal per terminal panel |
-| `src/main/loops.ts` | Loops: running steps, the `loop_route` tool, handoffs, human decisions, pauses |
+| `src/main/loops.ts` | Loops: the step graph and its folders, running steps, the `loop_route` tool, human decisions, pauses, loading loops saved as chains |
 | `src/main/core.ts` | `SymphonyCore`: the services and every request, without the window; any number of event listeners; read-only enforcement for a controlled machine |
 | `src/main/index.ts` | Window and IPC; every request goes through remote orchestration |
 | `src/main/remote/` | Remote orchestration: `orchestrator.ts` (listener, pairing, routing, merging), `link.ts` (remote side: dialing out, serving the core, read-only control, shared folders, audit), `mirror.ts` (a remote machine's state as the orchestrator sees it), `server.ts` (request ids, sequence numbers), `wire.ts` (frames, ping, silence), `identity.ts` (certificate, pairing code), `mdns.ts`, `settings.ts` |
@@ -384,7 +392,7 @@ with your own environment, so a `claude` you run there yourself is not covered.
 | `src/renderer/src/components/Viewer.tsx` | Diff viewer, skill preview, MCP details, CLAUDE.md editor |
 | `src/renderer/src/components/TerminalPanel.tsx` | Floating terminal (xterm.js) |
 | `src/renderer/src/components/UsagePanel.tsx` | Usage bars and reset times |
-| `src/renderer/src/components/LoopPanel.tsx` | Loop editor, running view, human review card, history |
+| `src/renderer/src/components/LoopPanel.tsx` | Loop editor (the graph of steps and folders), running view, human review card, history |
 | `src/renderer/src/speech/` | Dictation: microphone capture, the local Whisper worker, live preview |
 | `src/main/dictation.ts` | Clean-up of dictated text with Claude Haiku |
 | `src/headless/` | The headless remote machine: `index.ts` (command line, core and link without a window), `electron.ts` (plain-Node stand-in for the Electron APIs the remote path uses); built and run by `scripts/headless.mjs` |
@@ -416,12 +424,13 @@ on Windows 11, driving the built app:
   interrupting a running command, resizing, several at once, and every shell ending when its
   panel closes or the app quits.
 - Usage: the bars match the account's 5-hour, weekly and weekly Fable windows, with reset times.
-- Loops, in a three-step loop (build page, design review, human approval) on Haiku: the review
-  step sent the page back once with the list of changes and passed it on the second try; at the
-  human step, sending it back with a note got the change made and returned to review; approving
-  finished the loop. Also: cached improved prompts were reused on the next run; quitting
-  mid-step brought the loop back paused, and "Rerun this step" continued it; "Stop loop"
-  stopped the running step; artifact opening refused a missing file and non-web links.
+- Loops, on this PC with an agent step on Haiku and a human review: created from the machine
+  node, the starter graph wired to a picked session folder and two temporary folders, a session
+  connection drawn by dragging, and an edge prompt. The step ran in its session folder and wrote
+  into its temporary output folder; the review listed that folder's file; sending the loop back
+  with a prompt put the prompt first in the step's next message and the file was rewritten;
+  approving finished the loop; deleting it removed its temporary folders and left the picked
+  folder alone. Loops on a remote machine have not been run since loops became graphs.
 - Auto-approve: turning it on released a waiting Write approval (recorded as auto-allowed), and a
   session started while it was on never stopped for approval; turning it off removed the reminder.
 - Dictation, with a Windows text-to-speech recording of a sentence with "um"s and "uh"s fed in

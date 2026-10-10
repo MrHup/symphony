@@ -56,9 +56,8 @@ export interface SessionInfo {
   position?: Point
   /** Set on an optimize session once the pipeline has started the real session; its node then fades out. */
   handedOff?: boolean
-  /** Loop sessions: the loop and the step index they ran. */
+  /** Loop sessions: the loop they ran a step of. */
   loopId?: string
-  loopStep?: number
   /** Hidden from the graph (an earlier run of a loop step); still listed in the loop's history. */
   archived?: boolean
   machineId?: string
@@ -260,27 +259,55 @@ export interface LoopStep {
   optimized?: string
   /** What `optimized` was made from, to tell when the step changed. */
   optimizedFrom?: string
+  /** Where the step sits in the loop editor's graph. */
+  position: Point
 }
 
-export interface LoopArtifact {
-  label: string
-  /** A file, absolute or relative to the project folder. */
+/**
+ * A folder of the loop, on the loop's device. A root folder is permanent (an existing folder) or
+ * temporary (created for the loop, kept across runs, deleted with the loop). A nested folder lives
+ * inside its parent and is temporary when its root is.
+ */
+export interface LoopFolder {
+  id: string
+  /** For a temporary or nested folder, also its name on disk. */
+  name: string
+  /** Permanent: the absolute path ('' until one is picked). Unset: temporary, or nested. */
   path?: string
-  url?: string
-  /** The file as copied at handoff (images, PDFs and other viewable files). */
-  asset?: AssetRef
+  /** Nested: the folder it lives in. */
+  parentId?: string
+  position: Point
 }
 
-/** One move of the loop: who decided, from which step, to where, and what they handed over. */
-export interface LoopHandoff {
-  fromStep: number
-  /** forward: next step (or finish after the last). back: to `toStep`. stop: the user stopped the loop. */
+/** session: the step's working folder (its CLAUDE.md, settings and gh identity). input: what it reads. output: where it writes. */
+export type LoopFolderRole = 'session' | 'input' | 'output'
+
+/** A step's use of a folder. Agent steps have one folder per role; human reviews have an input folder. */
+export interface LoopLink {
+  stepId: string
+  folderId: string
+  role: LoopFolderRole
+}
+
+/** A way the loop can go from one step to the next. */
+export interface LoopEdge {
+  id: string
+  from: string
+  to: string
+  /** Put in front of the next step's prompt when the loop moves along this edge. */
+  prompt?: string
+}
+
+/** One move of the loop: who moved it, from which step, to where, and the prompt it carried. */
+export interface LoopMove {
+  from: string
+  /** forward: along an edge (finishing at a step with none). back: you sent the loop to an earlier step. stop: you stopped it. */
   decision: 'forward' | 'back' | 'stop'
   /** Step the loop moved to; null when it finished or stopped. */
-  toStep: number | null
+  to: string | null
   by: 'agent' | 'human'
-  summary: string
-  artifacts: LoopArtifact[]
+  /** The edge's prompt, or yours when you sent the loop back; it goes in front of the next step's prompt. */
+  prompt?: string
   sessionId?: string
   at: number
 }
@@ -288,39 +315,41 @@ export interface LoopHandoff {
 /**
  * draft: defined, never started. optimizing: improving step prompts. running: an agent step runs.
  * waiting: a human step waits for you. paused: needs you to route it (no routing, stopped step, run limit).
- * done: the last step moved forward. stopped: you stopped it.
+ * done: it reached a step with no way out. stopped: you stopped it.
  */
 export type LoopState = 'draft' | 'optimizing' | 'running' | 'waiting' | 'paused' | 'done' | 'stopped'
 
 export interface LoopInfo {
   id: string
-  projectId: string
   name: string
   steps: LoopStep[]
+  folders: LoopFolder[]
+  links: LoopLink[]
+  edges: LoopEdge[]
+  /** The step every run starts at. */
+  start: string | null
   /** Most agent step runs in a row without a human decision, so a loop cannot cycle forever unattended. */
   maxRuns: number
   state: LoopState
-  /** Index of the step that is running or waiting. */
-  current: number | null
+  /** The step that is running or waiting. */
+  current: string | null
   /** Agent step runs so far. */
   runs: number
   /** `runs` at the last human decision; the run limit counts from here. */
   runsAtHuman?: number
-  history: LoopHandoff[]
+  history: LoopMove[]
   /** false: agent steps run with their own prompts. Unset (loops saved before the option) means on. */
   optimize?: boolean
   activeSessionId?: string
   pausedReason?: string
   createdAt: number
   position?: Point
+  /** The remote machine the loop belongs to and runs on; unset means this machine. */
   machineId?: string
 }
 
 /** What the loop editor sends: the definition without run state. */
-export interface LoopDraft {
-  name: string
-  steps: LoopStep[]
-  maxRuns: number
+export interface LoopDraft extends Pick<LoopInfo, 'name' | 'steps' | 'folders' | 'links' | 'edges' | 'start' | 'maxRuns'> {
   /** Improve agent prompts with /optimize-prompt when the loop starts. */
   optimize: boolean
 }
@@ -328,9 +357,19 @@ export interface LoopDraft {
 /** A routing decision made by you, on a human step or a paused loop. */
 export interface LoopDecision {
   decision: 'forward' | 'back' | 'stop'
-  /** With back: the step index to return to. */
-  step?: number
-  feedback: string
+  /** With forward: the edge to follow, when the step has several. */
+  edge?: string
+  /** With back: the step to send the loop to, and the prompt that goes in front of its own. */
+  step?: string
+  prompt?: string
+}
+
+/** A file in a loop folder, listed for review. */
+export interface LoopFile {
+  /** Relative to the folder, with forward slashes. */
+  path: string
+  size: number
+  modified: number
 }
 
 export interface UsageWindow {

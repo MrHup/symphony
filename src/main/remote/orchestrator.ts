@@ -31,7 +31,7 @@ import {
   type Frame,
   type Hello
 } from '@shared/remote'
-import type { AppSnapshot, AssetRef, GitStats, LoopArtifact, LoopInfo, MachineHealth, MachineState, MachineStatus, MainEvent, Point, Project, RemoteStatus, TranscriptItem } from '@shared/types'
+import type { AppSnapshot, AssetRef, GitStats, LoopInfo, MachineHealth, MachineState, MachineStatus, MainEvent, Point, Project, RemoteStatus, TranscriptItem } from '@shared/types'
 import type { SymphonyCore } from '../core'
 import type { Adapters } from '../platform'
 import { deleteJson, listJson, loadJson, saveJson } from '../store'
@@ -110,7 +110,7 @@ export class Orchestrator {
   /** Files being fetched from remote machines, by asset id, so each is fetched once. */
   private fetching = new Map<string, Promise<string>>()
   /**
-   * Which remote sessions and loops each copied file belongs to ("machineId/ownerId"). A copy is
+   * Which remote sessions each copied file belongs to ("machineId/ownerId"). A copy is
    * deleted once none of them exist any more.
    */
   private fileOwners: Record<string, string[]> = {}
@@ -364,9 +364,8 @@ export class Orchestrator {
     switch (f.t) {
       case 'snapshot': {
         m.mirror.onSnapshot(f.snapshot, f.seq)
-        for (const l of f.snapshot.loops) this.prefetch(m, waitingFiles(l), l.id)
-        // Sessions and loops deleted while the link was down: their copies go too.
-        const alive = new Set([...f.snapshot.sessions.map((x) => x.id), ...f.snapshot.loops.map((l) => l.id)])
+        // Sessions deleted while the link was down: their copies go too.
+        const alive = new Set(f.snapshot.sessions.map((x) => x.id))
         this.dropOwners(m.id, (owner) => !alive.has(owner))
         if (m.status !== 'online') {
           this.setStatus(m, 'online')
@@ -456,7 +455,7 @@ export class Orchestrator {
     if (!owner) return this.core.invokeLocal(method, plain)
     const m = this.need(owner)
     const forwarded = plain.map((a) => (typeof a === 'string' ? (splitMachine(a)?.machineId === owner ? splitMachine(a)!.id : a) : a))
-    if (method === 'openArtifact') return this.openRemoteArtifact(m, forwarded[0] as string, forwarded[1] as LoopArtifact)
+    if (method === 'loopOpenFile') return this.openRemoteFile(m, forwarded)
     if (method === 'asset' || method === 'openAsset') {
       // Served from this machine's copy, so a file fetched once can still be seen while its machine is offline.
       const path = await this.ensureAsset(m, String(forwarded[1]), String(forwarded[0]))
@@ -577,7 +576,7 @@ export class Orchestrator {
     return p
   }
 
-  /** Fetch shown and handed-over files as soon as they appear, so they can be reviewed even if the machine sleeps. */
+  /** Fetch shown files as soon as they appear, so they can be seen even if the machine sleeps. */
   private prefetch(m: Machine, files: AssetRef[], ownerId: string): void {
     for (const f of files) void this.ensureAsset(m, f.id, ownerId).catch(() => undefined)
   }
@@ -601,22 +600,10 @@ export class Orchestrator {
     this.core.releaseFiles(freed)
   }
 
-  /** Files come over the link and open here (viewable types only); links to the machine itself cannot. */
-  private async openRemoteArtifact(m: Machine, projectId: string, artifact: LoopArtifact): Promise<string | null> {
-    if (artifact.url && !/^file:/i.test(artifact.url)) {
-      let host = ''
-      try {
-        host = new URL(artifact.url).hostname
-      } catch {
-        return 'This link cannot be opened.'
-      }
-      if (/^(localhost|127\.|0\.0\.0\.0$|\[?::1\]?$)/i.test(host)) return `This link points to ${m.name} itself (${host}), so it cannot open on this machine.`
-      if (!/^https?:/i.test(artifact.url)) return 'Only http, https and file links can be opened.'
-      this.adapters.openExternal(artifact.url)
-      return null
-    }
+  /** A file from a remote loop folder comes over the link and opens here (viewable types only). */
+  private async openRemoteFile(m: Machine, args: unknown[]): Promise<string | null> {
     if (m.status !== 'online') return `${m.name} is offline.`
-    const file = (await this.request(m, 'fetchArtifact', [projectId, artifact])) as { name: string; data: string } | { error: string }
+    const file = (await this.request(m, 'fetchLoopFile', args)) as { name: string; data: string } | { error: string }
     if ('error' in file) return file.error
     const dir = join(tmpdir(), 'symphony-remote', m.id.slice(0, 12))
     mkdirSync(dir, { recursive: true })
@@ -720,8 +707,7 @@ export class Orchestrator {
     m.mirror = new MachineMirror(id, () => this.layout(id), () => this.machinePosition(id), {
       emit: (e) => {
         if (e.type === 'transcript') this.prefetch(m, e.item.kind === 'files' ? e.item.files : e.item.kind === 'tool' ? (e.item.result?.files ?? []) : [], e.sessionId)
-        if (e.type === 'loop') this.prefetch(m, waitingFiles(e.loop), e.loop.id)
-        if (e.type === 'sessionRemoved' || e.type === 'loopRemoved') this.dropOwners(m.id, (owner) => owner === e.id)
+        if (e.type === 'sessionRemoved') this.dropOwners(m.id, (owner) => owner === e.id)
         if (e.type === 'login' && e.prompt.url && e.prompt.url !== m.loginUrl) {
           // The person is here, so the sign-in page opens on this machine.
           m.loginUrl = e.prompt.url
@@ -806,12 +792,6 @@ export class Orchestrator {
       pairing: [...this.pairings.values()].map((p) => ({ id: p.id, name: p.hello.machineName, code: p.code, accepted: p.accepted }))
     }
   }
-}
-
-/** The files a loop hands to the step it waits on: what a human reviewer will look at. */
-function waitingFiles(l: LoopInfo): AssetRef[] {
-  if (l.state !== 'waiting' && l.state !== 'paused') return []
-  return (l.history.at(-1)?.artifacts ?? []).flatMap((a) => (a.asset ? [a.asset] : []))
 }
 
 /**

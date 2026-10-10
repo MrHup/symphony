@@ -187,7 +187,7 @@ const adapters = {
   pickFolder: async () => null,
   openExternal: () => undefined,
   openPath: async (path: string) => (opened.push(path), null),
-  openArtifact: async () => null,
+  openFile: async () => null,
   micAccess: async () => true,
   thumbnail: async () => null
 }
@@ -645,7 +645,7 @@ describe('link server', () => {
   })
 })
 
-describe('files shown and handed over', () => {
+describe('files shown in sessions', () => {
   const png = (n: number) => Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47]), Buffer.from(String(n))])
 
   test('the store copies files, folders and patterns, by content, and skips what cannot be shown', async () => {

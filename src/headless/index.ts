@@ -41,7 +41,7 @@ const adapters: Adapters = {
   pickFolder: async () => null,
   openExternal: (url) => console.log(`Open in a browser: ${url}`),
   openPath: async () => NO_WINDOW,
-  openArtifact: async () => NO_WINDOW,
+  openFile: async () => NO_WINDOW,
   micAccess: async () => false,
   thumbnail: async () => null
 }

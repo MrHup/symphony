@@ -7,6 +7,12 @@ export const IconPlus = ({ size = 16 }: { size?: number }) => (
   </svg>
 )
 
+export const IconMinus = ({ size = 16 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" {...base}>
+    <path d="M3 8h10" />
+  </svg>
+)
+
 export const IconClose = ({ size = 14 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 14 14" {...base}>
     <path d="M3.5 3.5l7 7M10.5 3.5l-7 7" />

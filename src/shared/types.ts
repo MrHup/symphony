@@ -187,9 +187,13 @@ export interface GitStats {
   isRepo: boolean
   /** The checked-out branch, or the short commit hash when HEAD is detached. */
   branch?: string
+  /** Lines changed vs HEAD, staged or not. */
   added: number
   removed: number
-  files: GitFileStat[]
+  /** The index vs HEAD. */
+  staged: GitFileStat[]
+  /** The working tree vs the index, untracked files included. */
+  unstaged: GitFileStat[]
 }
 
 export interface GitFileDiff {

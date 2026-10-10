@@ -548,7 +548,7 @@ export class Orchestrator {
   /** What can still be shown for an offline machine: its last known state. */
   private offlineRead(m: Machine, method: string, args: unknown[]): unknown {
     if (method === 'transcript') return m.mirror.cachedTranscript(args[0] as string) ?? []
-    if (method === 'gitStats') return (m.mirror.snapshot?.git[args[0] as string] ?? { isRepo: true, added: 0, removed: 0, files: [] }) satisfies GitStats
+    if (method === 'gitStats') return (m.mirror.snapshot?.git[args[0] as string] ?? { isRepo: true, added: 0, removed: 0, staged: [], unstaged: [] }) satisfies GitStats
     throw new Error(`${m.name} is offline`)
   }
 

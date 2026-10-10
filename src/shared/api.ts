@@ -50,10 +50,14 @@ export interface InvokeApi {
   respondApproval(sessionId: string, requestId: string, decision: ApprovalDecision, message?: string): Promise<string | null>
   respondQuestion(sessionId: string, requestId: string, answers: Record<string, string>): Promise<string | null>
   gitStats(projectId: string): Promise<GitStats>
-  gitFileDiff(projectId: string, file: GitFileStat): Promise<GitFileDiff>
+  /** staged: the file from GitStats.staged (HEAD vs index), else from unstaged (index vs working tree). */
+  gitFileDiff(projectId: string, file: GitFileStat, staged: boolean): Promise<GitFileDiff>
   gitBranches(projectId: string): Promise<string[]>
   gitSwitch(projectId: string, branch: string): Promise<void>
-  /** Stages every change the diff viewer lists and commits it. */
+  /** Paths relative to the project folder; ['.'] is every change in it. */
+  gitStage(projectId: string, paths: string[]): Promise<void>
+  gitUnstage(projectId: string, paths: string[]): Promise<void>
+  /** Commits what is staged. */
   gitCommit(projectId: string, message: string): Promise<void>
   readSkill(skillId: string): Promise<{ path: string; content: string }>
   readClaudeMd(projectId: string): Promise<{ path: string; content: string; exists: boolean }>
@@ -144,6 +148,8 @@ export const INVOKE_METHODS: (keyof InvokeApi)[] = [
   'gitFileDiff',
   'gitBranches',
   'gitSwitch',
+  'gitStage',
+  'gitUnstage',
   'gitCommit',
   'readSkill',
   'readClaudeMd',

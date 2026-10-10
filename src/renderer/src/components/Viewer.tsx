@@ -1,12 +1,12 @@
 import { DiffEditor, Editor } from '@monaco-editor/react'
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { GitFileDiff, GitFileStat, GitStats } from '@shared/types'
 import { editorFont, languageFor } from '../monaco'
 import { api, useLock, useStore, type Panel } from '../store'
 import { cleanError } from './Composer'
 import { FloatingPanel } from './FloatingPanel'
 import { Glyph } from './Glyph'
-import { IconRefresh } from './icons'
+import { IconMinus, IconPlus, IconRefresh } from './icons'
 import { Markdown } from './Markdown'
 
 const nf = new Intl.NumberFormat('en-US')
@@ -34,6 +34,10 @@ export interface ViewerFile {
   dir?: string
   status?: string
   nums?: string
+  /** Files of one group follow each other under its heading in `groups`. */
+  group?: string
+  /** A button at the end of the row. */
+  action?: ReactNode
 }
 
 /**
@@ -42,6 +46,7 @@ export interface ViewerFile {
  */
 export function Viewer({
   files,
+  groups,
   side,
   active,
   onSelect,
@@ -52,6 +57,7 @@ export function Viewer({
   empty
 }: {
   files?: ViewerFile[]
+  groups?: Record<string, ReactNode>
   side?: ReactNode
   active?: string
   onSelect?: (key: string) => void
@@ -88,15 +94,21 @@ export function Viewer({
               }
             }}
           >
-            {files.map((f) => (
-              <button key={f.key} className={`viewer-file${f.key === active ? ' is-active' : ''}`} onClick={() => onSelect?.(f.key)} title={f.dir ? `${f.dir}/${f.name}` : f.name}>
-                {f.status && <span className="st">{f.status}</span>}
-                <span className="name">
-                  {f.name}
-                  {f.dir && <span className="dir">{f.dir}</span>}
-                </span>
-                {f.nums && <span className="nums">{f.nums}</span>}
-              </button>
+            {files.map((f, i) => (
+              <Fragment key={f.key}>
+                {f.group !== undefined && f.group !== files[i - 1]?.group && <div className="viewer-group">{groups?.[f.group]}</div>}
+                <div className={`viewer-row${f.key === active ? ' is-active' : ''}`}>
+                  <button className="viewer-file" onClick={() => onSelect?.(f.key)} title={f.dir ? `${f.dir}/${f.name}` : f.name}>
+                    {f.status && <span className="st">{f.status}</span>}
+                    <span className="name">
+                      {f.name}
+                      {f.dir && <span className="dir">{f.dir}</span>}
+                    </span>
+                    {f.nums && <span className="nums">{f.nums}</span>}
+                  </button>
+                  {f.action}
+                </div>
+              </Fragment>
             ))}
           </div>
         </div>
@@ -156,11 +168,20 @@ function splitPath(p: string) {
 
 // ---------- git diff ----------
 
+interface Change {
+  key: string
+  file: GitFileStat
+  staged: boolean
+}
+
+/** A rename is staged or unstaged together with the path it came from. */
+const pathsOf = (f: GitFileStat) => (f.oldPath ? [f.path, f.oldPath] : [f.path])
+
 export function DiffPanel({ panel }: { panel: Panel }) {
   const project = useStore((s) => s.projects[panel.targetId])
   const stats = useStore((s) => s.git[panel.targetId]) as GitStats | undefined
   const lock = useLock(project?.machineId)
-  const [active, setActive] = useState<string | undefined>()
+  const [active, setActive] = useState<{ path: string; staged: boolean }>()
   const [diff, setDiff] = useState<GitFileDiff | null>(null)
   const [sideBySide, setSideBySide] = useState(true)
   const [branches, setBranches] = useState<string[]>([])
@@ -194,42 +215,58 @@ export function DiffPanel({ panel }: { panel: Panel }) {
     if (await run(() => api.gitCommit(panel.targetId, message))) setMessage('')
   }
 
-  const files = stats?.files ?? []
-  const current = files.find((f) => f.path === active) ?? files[0]
+  const staged = stats?.staged ?? []
+  const unstaged = stats?.unstaged ?? []
+  const changes: Change[] = [...staged.map((file) => ({ key: `staged:${file.path}`, file, staged: true })), ...unstaged.map((file) => ({ key: `unstaged:${file.path}`, file, staged: false }))]
+  // A file just staged or unstaged stays selected in its new group.
+  const current = changes.find((c) => c.file.path === active?.path && c.staged === active.staged) ?? changes.find((c) => c.file.path === active?.path) ?? changes[0]
 
   // Re-read the selected file whenever the project's stats change (the working tree moved).
   const load = useCallback(
-    async (file: GitFileStat | undefined) => {
-      if (!file) return setDiff(null)
+    async (change: Change | undefined) => {
+      if (!change) return setDiff(null)
       // An offline machine cannot send file contents; the list still shows its last known changes.
-      setDiff(await api.gitFileDiff(panel.targetId, file).catch(() => null))
+      setDiff(await api.gitFileDiff(panel.targetId, change.file, change.staged).catch(() => null))
     },
     [panel.targetId]
   )
   useEffect(() => {
     void load(current)
-  }, [current?.path, current?.added, current?.removed, current?.status, load])
+  }, [current?.key, current?.file.added, current?.file.removed, current?.file.status, load])
 
-  const list: ViewerFile[] = useMemo(
-    () =>
-      files.map((f) => {
-        const { name, dir } = splitPath(f.path)
-        return { key: f.path, name, dir, status: f.status, nums: f.binary ? 'bin' : `+${f.added} −${f.removed}` }
-      }),
-    [files]
+  const stageButton = (unstage: boolean, paths: string[], label: string) => (
+    <button
+      className="icon-btn"
+      disabled={busy || !!lock}
+      title={lock ?? label}
+      onClick={() => void run(() => (unstage ? api.gitUnstage(panel.targetId, paths) : api.gitStage(panel.targetId, paths)))}
+    >
+      {unstage ? <IconMinus size={12} /> : <IconPlus size={12} />}
+    </button>
   )
+  const heading = (title: string, count: number, unstage: boolean) => (
+    <>
+      <span className="title">{title}</span>
+      <span className="count">{count}</span>
+      {stageButton(unstage, ['.'], unstage ? 'Unstage all' : 'Stage all')}
+    </>
+  )
+  const list: ViewerFile[] = changes.map(({ key, file: f, staged: s }) => {
+    const { name, dir } = splitPath(f.path)
+    return { key, name, dir, status: f.status, nums: f.binary ? 'bin' : `+${f.added} −${f.removed}`, group: s ? 'staged' : 'unstaged', action: stageButton(s, pathsOf(f), s ? 'Unstage' : 'Stage') }
+  })
 
   if (!project) return null
   const branch = stats?.branch
   // A detached HEAD shows its commit, which is not in the branch list.
   const choices = branch && !branches.includes(branch) ? [branch, ...branches] : branches
-  const canCommit = !!message.trim() && files.length > 0 && !busy && !lock
+  const canCommit = !!message.trim() && staged.length > 0 && !busy && !lock
   return (
     <FloatingPanel
       panel={panel}
       machineId={project.machineId}
       title={`${project.name} · changes`}
-      meta={error ?? (stats?.isRepo === false ? 'not a git repository' : `+${nf.format(stats?.added ?? 0)} −${nf.format(stats?.removed ?? 0)} · ${files.length} ${files.length === 1 ? 'file' : 'files'} · vs HEAD`)}
+      meta={error ?? (stats?.isRepo === false ? 'not a git repository' : `+${nf.format(stats?.added ?? 0)} −${nf.format(stats?.removed ?? 0)} vs HEAD · ${staged.length} staged · ${unstaged.length} unstaged`)}
       actions={
         <>
           {branch && (
@@ -249,6 +286,7 @@ export function DiffPanel({ panel }: { panel: Panel }) {
     >
       <Viewer
         files={list}
+        groups={{ staged: heading('Staged', staged.length, true), unstaged: heading('Changes', unstaged.length, false) }}
         side={
           stats?.isRepo && (
             <form
@@ -268,18 +306,24 @@ export function DiffPanel({ panel }: { panel: Panel }) {
                   if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) e.currentTarget.form?.requestSubmit()
                 }}
               />
-              <button className="btn primary" disabled={!canCommit} title={lock ?? `Stage every change listed and commit (${window.symphony.platform === 'darwin' ? '⌘' : 'Ctrl'}+Enter)`}>
+              <button className="btn primary" disabled={!canCommit} title={lock ?? (staged.length ? `Commit the staged changes (${window.symphony.platform === 'darwin' ? '⌘' : 'Ctrl'}+Enter)` : 'Stage changes to commit them')}>
                 Commit
               </button>
             </form>
           )
         }
-        active={current?.path}
-        onSelect={setActive}
+        active={current?.key}
+        onSelect={(key) => {
+          const c = changes.find((x) => x.key === key)
+          if (c) setActive({ path: c.file.path, staged: c.staged })
+        }}
         bar={
           current && (
             <>
-              <span className="path">{current.oldPath ? `${current.oldPath} → ${current.path}` : current.path}</span>
+              <span className="path">
+                {current.file.oldPath ? `${current.file.oldPath} → ${current.file.path}` : current.file.path}
+                {current.staged ? ' · staged' : ''}
+              </span>
               <div className="seg">
                 <button className={sideBySide ? 'is-on' : ''} onClick={() => setSideBySide(true)}>
                   Side by side
@@ -291,8 +335,8 @@ export function DiffPanel({ panel }: { panel: Panel }) {
             </>
           )
         }
-        diff={diff && !diff.binary && current ? { original: diff.original, modified: diff.modified, language: languageFor(current.path), sideBySide } : undefined}
-        empty={stats?.isRepo === false ? 'This folder is not a git repository.' : diff?.binary ? 'Binary file' : files.length ? '' : 'No uncommitted changes.'}
+        diff={diff && !diff.binary && current ? { original: diff.original, modified: diff.modified, language: languageFor(current.file.path), sideBySide } : undefined}
+        empty={stats?.isRepo === false ? 'This folder is not a git repository.' : diff?.binary ? 'Binary file' : changes.length ? '' : 'No uncommitted changes.'}
       />
     </FloatingPanel>
   )

@@ -1184,23 +1184,58 @@ select.branch:hover {
 .commit .btn {
   justify-content: center;
 }
+.viewer-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 6px 4px 12px;
+  font-size: 11px;
+  color: var(--grey-2);
+}
+.viewer-group .title {
+  flex: 1;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.viewer-group .count {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+.viewer-row {
+  display: flex;
+  align-items: center;
+  padding-right: 6px;
+}
+.viewer-row:hover,
+.viewer-row.is-active {
+  background: var(--bg-hover);
+}
+.viewer-row > .icon-btn {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  opacity: 0;
+}
+.viewer-row:hover > .icon-btn,
+.viewer-row.is-active > .icon-btn,
+.viewer-row > .icon-btn:focus-visible {
+  opacity: 1;
+}
 .viewer-file {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 8px;
-  width: 100%;
   background: none;
   border: 0;
   text-align: left;
-  padding: 4px 12px;
+  padding: 4px 6px 4px 12px;
   font-size: 12px;
   color: var(--grey-3);
 }
-.viewer-file:hover {
-  background: var(--bg-hover);
-}
-.viewer-file.is-active {
-  background: var(--bg-hover);
+.viewer-row.is-active .viewer-file {
   color: var(--bone);
 }
 .viewer-file .name {

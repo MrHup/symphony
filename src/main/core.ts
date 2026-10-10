@@ -12,7 +12,7 @@ import { USER_HUB_ID, type AppSnapshot, type ControlState, type EffortLevel, typ
 import { dictationLanguage, inspect, isProjectScoped, projectSkills, readClaudeMd, readUsage, toMcpInfo, userSkills, writeClaudeMd } from './claudeConfig'
 import { TerminalManager } from './terminals'
 import { LoopManager } from './loops'
-import { commitAll, getFileDiff, getStats, listBranches, remoteHost, switchBranch } from './git'
+import { commitStaged, getFileDiff, getStats, listBranches, remoteHost, stage, switchBranch, unstage } from './git'
 import { getAccounts, login, resolveIdentity } from './github'
 import { extractOptimizedPrompt, OPTIMIZE_LINGER_MS, optimizeCommand } from './pipeline'
 import { refineDictation } from './dictation'
@@ -233,11 +233,18 @@ export class SymphonyCore {
   }
 
   private async refreshGit(p: Project): Promise<void> {
-    const stats = await getStats(p.path).catch(() => ({ isRepo: false, added: 0, removed: 0, files: [] }))
+    const stats = await getStats(p.path).catch(() => ({ isRepo: false, added: 0, removed: 0, staged: [], unstaged: [] }))
     const prev = this.gitStats.get(p.id)
     if (prev && JSON.stringify(prev) === JSON.stringify(stats)) return
     this.gitStats.set(p.id, stats)
     this.emit({ type: 'git', projectId: p.id, stats })
+  }
+
+  /** Runs a git change in a project's folder, then shows its new state. */
+  private async gitAction(projectId: string, action: (cwd: string) => Promise<void>): Promise<void> {
+    const p = this.project(projectId)
+    await action(p.path)
+    await this.refreshGit(p)
   }
 
   private async gitLoop(): Promise<void> {
@@ -494,18 +501,12 @@ export class SymphonyCore {
         await this.refreshGit(project(projectId))
         return this.gitStats.get(projectId)!
       },
-      gitFileDiff: (projectId, file) => getFileDiff(project(projectId).path, file),
+      gitFileDiff: (projectId, file, staged) => getFileDiff(project(projectId).path, file, staged),
       gitBranches: (projectId) => listBranches(project(projectId).path),
-      gitSwitch: async (projectId, branch) => {
-        const p = project(projectId)
-        await switchBranch(p.path, branch)
-        await this.refreshGit(p)
-      },
-      gitCommit: async (projectId, message) => {
-        const p = project(projectId)
-        await commitAll(p.path, message)
-        await this.refreshGit(p)
-      },
+      gitSwitch: (projectId, branch) => this.gitAction(projectId, (cwd) => switchBranch(cwd, branch)),
+      gitStage: (projectId, paths) => this.gitAction(projectId, (cwd) => stage(cwd, paths)),
+      gitUnstage: (projectId, paths) => this.gitAction(projectId, (cwd) => unstage(cwd, paths)),
+      gitCommit: (projectId, message) => this.gitAction(projectId, (cwd) => commitStaged(cwd, message)),
       readSkill: async (skillId) => {
         const skill = this.allSkills().find((s) => s.id === skillId)
         if (!skill) throw new Error('Unknown skill')

@@ -62,7 +62,7 @@ on one machine can be tested without touching the network or the firewall.
 | Watch a subagent | Click its node (it hangs off its session while it runs) |
 | See what a session made | Ask for it ("take a screenshot of the home screen"). Claude shows files with its `show_files` tool: images appear in the session view (click for the full-window viewer, ← → between images), PDFs and other files open in their default app. Images Claude reads itself, such as its own screenshots, appear under that tool call |
 | See uncommitted changes | Click the branch and `+n −n` counts on a project |
-| Switch branch or commit | In that changes view: pick a branch in the header, or write a message and **Commit** (Ctrl/⌘+Enter). A commit stages every change listed, which is everything under the project folder |
+| Stage, switch branch or commit | In that changes view, files are listed under **Staged** and **Changes**; the + and − on a file (or on a heading, for all of them) stage and unstage it. Pick a branch in the header, or write a message and **Commit** (Ctrl/⌘+Enter) to commit what is staged |
 | Edit CLAUDE.md | Click the page icon on a project. Save with Ctrl/⌘+S |
 | Read a skill | Click it (Source or Rendered) |
 | Inspect an MCP server | Click it. Secret values are hidden |

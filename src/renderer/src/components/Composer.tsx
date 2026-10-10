@@ -3,6 +3,8 @@ import { EFFORT_LABELS, type EffortLevel, type ModelOption } from '@shared/types
 import { usePastedImages } from '../images'
 import { api, machineConfig, useStore } from '../store'
 import { Attachments } from './Attachments'
+import { ReferenceChips } from './References'
+import { insertMentions, useFileDrop, useReferences } from '../references'
 import { useDictation } from '../speech/dictation'
 import { DictationOverlay, DictationStatus, MicButton } from './Dictate'
 
@@ -82,6 +84,9 @@ export function ComposerBubble() {
   const area = useRef<HTMLTextAreaElement>(null)
   const dictation = useDictation(text, setText, area)
   const dictating = dictation.state !== 'idle'
+  // Files dropped on a project's bubble go to its .claude-references folder and are mentioned at the cursor.
+  const refs = useReferences(project?.id)
+  const drop = useFileDrop(!!project && !busy && !dictating, (files) => void refs.add(files).then((added) => insertMentions(area.current, setText, added)))
   const [pos, setPos] = useState({ left: 0, top: 0 })
   const [side, setSide] = useState<'right' | 'left'>('right')
 
@@ -142,8 +147,9 @@ export function ComposerBubble() {
   return (
     <div
       ref={ref}
-      className={`composer from-${side}`}
+      className={`composer from-${side}${drop.over ? ' is-drop-over' : ''}`}
       style={pos}
+      {...drop.props}
       onKeyDown={(e) => {
         if (e.key === 'Escape') {
           e.preventDefault()
@@ -176,6 +182,7 @@ export function ComposerBubble() {
       </div>
       <DictationStatus d={dictation} />
       <Attachments images={pasted.images} onRemove={pasted.remove} />
+      <ReferenceChips refs={refs} text={text} disabled={busy || dictating} onPick={(r) => insertMentions(area.current, setText, [r])} />
       {error && <div className="dictation-status">{error}</div>}
       <div className="composer-foot">
         <MicButton d={dictation} />

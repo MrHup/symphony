@@ -8,6 +8,7 @@ import { z } from 'zod'
 import { SHOW_FILES_SERVER, SHOW_FILES_TOOL, type AgentInfo, type ApprovalDecision, type AskQuestion, type AssetRef, type EffortLevel, type GhIdentity, type ImageInput, type MainEvent, type NodeStatus, type SessionInfo, type SessionKind, type TranscriptItem } from '@shared/types'
 import { assetIdsIn, type AssetStore } from './assets'
 import { claudeExecutable } from './platform'
+import { REFERENCES_PROMPT } from './references'
 import { deleteTranscript, loadTranscript, saveTranscript } from './store'
 import { keySourceProblem, subscriptionEnv, subscriptionProblem, subscriptionSettings } from './subscription'
 
@@ -414,7 +415,7 @@ export class SessionManager {
         effort: rt.info.effort,
         resume: rt.info.sdkSessionId,
         settingSources: ['user', 'project', 'local'],
-        systemPrompt: show ? { type: 'preset', preset: 'claude_code', append: SHOW_FILES_PROMPT } : { type: 'preset', preset: 'claude_code' },
+        systemPrompt: show ? { type: 'preset', preset: 'claude_code', append: `${SHOW_FILES_PROMPT}\n\n${REFERENCES_PROMPT}` } : { type: 'preset', preset: 'claude_code' },
         pathToClaudeCodeExecutable: claudeExecutable(),
         includePartialMessages: true,
         forwardSubagentText: true,

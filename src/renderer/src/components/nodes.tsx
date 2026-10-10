@@ -5,6 +5,7 @@ import { api, clock, machineConfig, useLock, useStore } from '../store'
 import { Glyph, statusLabel } from './Glyph'
 import { IconAutoApprove, IconBattery, IconDoc, IconFolder, IconLoop, IconTerminal, IconTrash } from './icons'
 import { Markdown } from './Markdown'
+import { uploadReferences, useFileDrop } from '../references'
 
 const nf = new Intl.NumberFormat('en-US')
 
@@ -35,6 +36,9 @@ export function useModelLabel(value: string, machineId?: string): string {
 
 export type ProjectNodeType = Node<{ project: Project; status: NodeStatus; stats?: GitStats; busy: boolean; offline?: boolean; machine?: MachineState }, 'project'>
 
+/** How long the note after dropping files stays on a project. */
+const DROP_NOTE_MS = 4000
+
 export function ProjectNode({ data }: NodeProps<ProjectNodeType>) {
   const { project, status, stats, busy, offline, machine } = data
   const openPanel = useStore((s) => s.openPanel)
@@ -42,8 +46,25 @@ export function ProjectNode({ data }: NodeProps<ProjectNodeType>) {
   const clean = !stats || (stats.added === 0 && stats.removed === 0)
   // Terminals on a remote machine need its own switch.
   const terminals = !machine || machine.terminals
+  // Files dropped on a project are saved in its .claude-references folder (on its own machine).
+  const [dropNote, setDropNote] = useState<string | null>(null)
+  const noteTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  useEffect(() => () => clearTimeout(noteTimer.current), [])
+  const drop = useFileDrop(!lock, (files) => {
+    clearTimeout(noteTimer.current)
+    setDropNote(`adding ${files.length === 1 ? files[0].name : `${files.length} files`}…`)
+    void uploadReferences(project.id, files).then(({ added, errors }) => {
+      const n = added.length
+      setDropNote([n ? `${n} file${n === 1 ? '' : 's'} added to .claude-references` : '', ...errors].filter(Boolean).join(' · '))
+      noteTimer.current = setTimeout(() => setDropNote(null), errors.length ? DROP_NOTE_MS * 2 : DROP_NOTE_MS)
+    })
+  })
   return (
-    <div className={`node node-project${stateClass(status, false, offline)}`} title={lock ?? statusLabel(status)}>
+    <div
+      className={`node node-project${stateClass(status, false, offline)}${drop.over ? ' is-drop-over' : ''}`}
+      title={lock ?? `${statusLabel(status)}\nDrop files here to add them to .claude-references`}
+      {...drop.props}
+    >
       <Glyph status={status} size={30} />
       <div className="node-text">
         <span className="node-title">{project.name}</span>
@@ -51,6 +72,7 @@ export function ProjectNode({ data }: NodeProps<ProjectNodeType>) {
         <span className="node-path" title={project.path}>
           {project.path}
         </span>
+        {dropNote && <span className="node-sub drop-note">{dropNote}</span>}
         <div className="node-actions">
           {stats?.isRepo !== false && (
             <button

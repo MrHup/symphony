@@ -10,7 +10,7 @@ const THUMB_EDGE = 160
 const MAX_IMAGES = 20
 const PASSTHROUGH = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp'])
 
-function base64(blob: Blob): Promise<string> {
+export function base64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => resolve(String(reader.result).split(',')[1] ?? '')

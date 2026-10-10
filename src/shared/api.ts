@@ -18,6 +18,7 @@ import type {
   LoopDecision,
   LoopDraft,
   LoopInfo,
+  ReferenceFile,
   RemoteStatus,
   TranscriptItem
 } from './types'
@@ -59,6 +60,14 @@ export interface InvokeApi {
   gitUnstage(projectId: string, paths: string[]): Promise<void>
   /** Commits what is staged. */
   gitCommit(projectId: string, message: string): Promise<void>
+  /** Files in the project's .claude-references folder, newest first. */
+  referenceList(projectId: string): Promise<ReferenceFile[]>
+  /**
+   * Saves a file (base64 contents, so it reaches a remote machine's project too) into the project's
+   * .claude-references folder. The same name and content returns the file already there.
+   */
+  referenceAdd(projectId: string, name: string, data: string): Promise<ReferenceFile>
+  referenceDelete(projectId: string, name: string): Promise<void>
   readSkill(skillId: string): Promise<{ path: string; content: string }>
   readClaudeMd(projectId: string): Promise<{ path: string; content: string; exists: boolean }>
   writeClaudeMd(projectId: string, content: string): Promise<string>
@@ -151,6 +160,9 @@ export const INVOKE_METHODS: (keyof InvokeApi)[] = [
   'gitStage',
   'gitUnstage',
   'gitCommit',
+  'referenceList',
+  'referenceAdd',
+  'referenceDelete',
   'readSkill',
   'readClaudeMd',
   'writeClaudeMd',

@@ -2,7 +2,7 @@
 // machine run in this process with fake cores and talk over real TLS on 127.0.0.1.
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
@@ -11,7 +11,7 @@ import { after, before, describe, test } from 'node:test'
 import selfsigned from 'selfsigned'
 import { WebSocket } from 'ws'
 import { ALPN_LINK, MAX_FRAME_BYTES, PROTOCOL, READ_METHODS, withMachine, type Frame } from '../src/shared/remote'
-import type { AppSnapshot, ControlState, MainEvent, Project, SessionInfo, TranscriptItem } from '../src/shared/types'
+import type { AppSnapshot, ControlState, MainEvent, Project, ReferenceFile, SessionInfo, TranscriptItem } from '../src/shared/types'
 import { fingerprint, pairingCode, type Identity } from '../src/main/remote/identity'
 import { RemoteLink } from '../src/main/remote/link'
 import { MachineMirror } from '../src/main/remote/mirror'
@@ -22,6 +22,7 @@ import { Wire } from '../src/main/remote/wire'
 import { flushAll, setDataDir } from '../src/main/store'
 import { AssetStore } from '../src/main/assets'
 import { SessionManager } from '../src/main/sessions'
+import { addReference, listReferences, removeReference } from '../src/main/references'
 
 // ---------- helpers ----------
 
@@ -131,6 +132,13 @@ class FakeCore {
         return this.transcripts[String(args[0])] ?? []
       case 'termStart':
         return 'zsh'
+      // The real reference store, in the project's folder.
+      case 'referenceList':
+        return listReferences(this.project(String(args[0])).path)
+      case 'referenceAdd':
+        return addReference(this.project(String(args[0])).path, String(args[1]), String(args[2]))
+      case 'referenceDelete':
+        return removeReference(this.project(String(args[0])).path, String(args[1]))
       case 'setAutoApprove':
         this.snap.autoApprove = !!args[0]
         this.emit({ type: 'autoApprove', on: !!args[0] })
@@ -370,6 +378,36 @@ describe('routing', () => {
     assert.deepEqual(m.macCore.calls.at(-1), { method: 'sendMessage', args: [s.id, 'hello'] })
     await m.orch.invoke('readSkill', [withMachine(m.macId.id, 'skill:user::docs')])
     assert.deepEqual(m.macCore.calls.at(-1), { method: 'readSkill', args: ['skill:user::docs'] })
+  })
+
+  test('reference files reach a remote project as contents and land in its .claude-references folder', async () => {
+    const dir = join(m.shared, 'refs')
+    mkdirSync(dir)
+    const p = (await m.orch.invoke('addProject', [dir, m.macId.id])) as Project
+    const folder = join(dir, '.claude-references')
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3])
+    const add = (name: string, data: Buffer) => m.orch.invoke('referenceAdd', [p.id, name, data.toString('base64')]) as Promise<ReferenceFile>
+
+    const ref = await add('My Mockup (final).PNG', png)
+    assert.equal(ref.path, '.claude-references/My-Mockup-final.png', 'a name that works as an @-mention')
+    assert.deepEqual(readFileSync(join(folder, ref.name)), png)
+    assert.match(readFileSync(join(folder, '.gitignore'), 'utf8'), /^\*$/m, 'kept out of git')
+    assert.equal((await add('My Mockup (final).PNG', png)).name, ref.name, 'the same file again is reused')
+    assert.equal((await add('My Mockup (final).PNG', Buffer.from('other'))).name, 'My-Mockup-final-2.png', 'a different file with that name is numbered')
+    assert.equal((await add('../../escape.txt', Buffer.from('x'))).path, '.claude-references/escape.txt', 'a name is never a path')
+
+    const list = (await m.orch.invoke('referenceList', [p.id])) as ReferenceFile[]
+    assert.deepEqual(list.map((r) => r.name).sort(), ['My-Mockup-final-2.png', 'My-Mockup-final.png', 'escape.txt'])
+    await m.orch.invoke('referenceDelete', [p.id, 'escape.txt'])
+    assert.ok(!existsSync(join(folder, 'escape.txt')))
+    await assert.rejects(m.orch.invoke('referenceDelete', [p.id, '../refs.txt']), /Not a reference file/)
+    await assert.rejects(m.orch.invoke('referenceDelete', [p.id, '.gitignore']), /Not a reference file/)
+    assert.ok(!m.pcCore.calls.some((c) => c.method.startsWith('reference')), 'nothing is written on the orchestrator')
+
+    // The controlled machine's own window can list them, not change them.
+    const local = m.macCore.state.projects.find((x) => x.path === dir)!.id
+    assert.equal(((await m.macCore.invokeLocal('referenceList', [local])) as ReferenceFile[]).length, 2)
+    await assert.rejects(m.macCore.invokeLocal('referenceAdd', [local, 'a.txt', '']), /Controlled by/)
   })
 
   test('moving a remote node stays on the orchestrator', async () => {

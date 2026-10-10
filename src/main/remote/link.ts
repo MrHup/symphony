@@ -570,6 +570,10 @@ export class RemoteLink {
         return audit(`switched to ${first(args[1])}`, this.projectName(args[0] as string))
       case 'gitCommit':
         return audit('committed', `${this.projectName(args[0] as string)}: ${first(args[1])}`)
+      case 'referenceAdd':
+        return audit('reference added', `${this.projectName(args[0] as string)}: ${first(args[1])}`)
+      case 'referenceDelete':
+        return audit('reference deleted', `${this.projectName(args[0] as string)}: ${first(args[1])}`)
       case 'writeClaudeMd':
         return audit('CLAUDE.md saved', this.projectName(args[0] as string))
       case 'removeProject':

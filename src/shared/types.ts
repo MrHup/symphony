@@ -91,6 +91,15 @@ export interface ImageInput {
   thumb: string
 }
 
+/** A file the user added to a project's .claude-references folder, for prompts to point at. */
+export interface ReferenceFile {
+  name: string
+  /** Relative to the project folder, with forward slashes; what a prompt mentions as `@<path>`. */
+  path: string
+  size: number
+  modified: number
+}
+
 export type TranscriptItem =
   | { kind: 'user'; id: string; text: string; images?: string[] }
   | { kind: 'thinking'; id: string; text: string; parent: string | null; live?: boolean }

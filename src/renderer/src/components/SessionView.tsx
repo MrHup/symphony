@@ -9,6 +9,8 @@ import { IconSend, IconStop, IconTrash } from './icons'
 import { Markdown } from './Markdown'
 import { usePastedImages } from '../images'
 import { Attachments } from './Attachments'
+import { ReferenceChips } from './References'
+import { insertMentions, useFileDrop, useReferences } from '../references'
 import { useDictation } from '../speech/dictation'
 import { DictationOverlay, DictationStatus, MicButton } from './Dictate'
 import { useModelLabel } from './nodes'
@@ -352,13 +354,15 @@ function FilesChanged({ items, cwd }: { items: TranscriptItem[]; cwd: string }) 
   )
 }
 
-function Reply({ sessionId, lock }: { sessionId: string; lock: string | null }) {
+function Reply({ sessionId, projectId, lock }: { sessionId: string; projectId: string | null; lock: string | null }) {
   const [text, setText] = useState('')
   const [error, setError] = useState<string | null>(null)
   const pasted = usePastedImages()
   const area = useRef<HTMLTextAreaElement>(null)
   const dictation = useDictation(text, setText, area)
   const dictating = dictation.state !== 'idle'
+  const refs = useReferences(projectId)
+  const drop = useFileDrop(!!projectId && !lock && !dictating, (files) => void refs.add(files).then((added) => insertMentions(area.current, setText, added)))
   useEffect(() => {
     const el = area.current
     if (!el) return
@@ -379,7 +383,8 @@ function Reply({ sessionId, lock }: { sessionId: string; lock: string | null }) 
       .catch((err) => setError(cleanError(err)))
   }
   return (
-    <div className="reply-wrap">
+    <div className={`reply-wrap${drop.over ? ' is-drop-over' : ''}`} {...drop.props}>
+      <ReferenceChips refs={refs} text={text} disabled={!!lock || dictating} onPick={(r) => insertMentions(area.current, setText, [r])} />
       <Attachments images={pasted.images} onRemove={pasted.remove} />
       <DictationStatus d={dictation} />
       {error && <div className="dictation-status">{error}</div>}
@@ -474,7 +479,7 @@ export function SessionPanel({ panel }: { panel: Panel }) {
       >
         <FilesChanged items={items} cwd={session.cwd} />
         <Transcript session={session} items={items} filter={filter} />
-        <Reply sessionId={session.id} lock={lock} />
+        <Reply sessionId={session.id} projectId={session.projectId} lock={lock} />
       </FloatingPanel>
     </LockContext.Provider>
   )

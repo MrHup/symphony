@@ -1461,6 +1461,90 @@ select.branch:hover {
   opacity: 1;
 }
 
+/* Reference files (.claude-references): chips under a prompt box; a click mentions one. */
+.references {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  padding: 4px 14px 2px;
+  max-height: 64px;
+  overflow-y: auto;
+}
+.reply-wrap .references {
+  padding: 10px 16px 0;
+}
+.reference {
+  display: inline-flex;
+  align-items: center;
+  max-width: 220px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--bg-sunken);
+}
+.reference.is-mentioned {
+  border-color: var(--line-strong);
+}
+.reference-name {
+  min-width: 0;
+  padding: 1px 2px 1px 6px;
+  border: 0;
+  background: none;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--grey-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.reference-name:hover:not(:disabled),
+.reference.is-mentioned .reference-name {
+  color: var(--bone);
+}
+.reference-remove {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--grey-2);
+  opacity: 0;
+  cursor: pointer;
+}
+.reference:hover .reference-remove,
+.reference-remove:focus-visible {
+  opacity: 1;
+}
+.reference-remove:hover:not(:disabled) {
+  color: var(--bone);
+}
+.reference-note {
+  font-size: 11px;
+  color: var(--grey-2);
+}
+
+/* Something carrying files is over a place that saves them to .claude-references. */
+.composer.is-drop-over {
+  border-style: dashed;
+  border-color: var(--grey-3);
+}
+.reply-wrap.is-drop-over {
+  outline: 1px dashed var(--grey-3);
+  outline-offset: -4px;
+}
+.node-project.is-drop-over {
+  outline: 1px dashed var(--grey-3);
+  outline-offset: 10px;
+  border-radius: 6px;
+}
+.node-project .drop-note {
+  max-width: 300px;
+  white-space: normal;
+}
+
 .t-user-images {
   display: flex;
   flex-wrap: wrap;

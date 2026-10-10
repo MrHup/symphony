@@ -1,6 +1,7 @@
 // The prompt pipeline: a prompt from a project node first goes through /optimize-prompt, and the
 // fenced block under "## Optimized prompt" in that session's reply becomes the first message of
 // the real session, run with the same model.
+import { REFERENCES_DIR } from './references'
 
 /** The rewritten prompt from an optimize-prompt reply, or null when the reply has no such block. */
 export function extractOptimizedPrompt(reply: string): string | null {
@@ -23,6 +24,9 @@ export function optimizeCommand(prompt: string, imageCount = 0, context?: string
   const notes = [
     imageCount
       ? `(The user attached ${one ? 'an image' : `${imageCount} images`} to this prompt. ${one ? 'It is' : 'They are'} sent along with the optimized prompt, so keep any references to ${one ? 'it' : 'them'}, e.g. "the attached screenshot".)`
+      : '',
+    prompt.includes(`${REFERENCES_DIR}/`)
+      ? `(Paths under ${REFERENCES_DIR}/ are files the user added to the project for this task. Keep every one exactly as written, including its leading @.)`
       : '',
     context ? `(${context})` : ''
   ].filter(Boolean)

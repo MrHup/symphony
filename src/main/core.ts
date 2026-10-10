@@ -16,6 +16,7 @@ import { commitStaged, getFileDiff, getStats, listBranches, remoteHost, stage, s
 import { getAccounts, login, resolveIdentity } from './github'
 import { extractOptimizedPrompt, OPTIMIZE_LINGER_MS, optimizeCommand } from './pipeline'
 import { refineDictation } from './dictation'
+import { addReference, listReferences, removeReference } from './references'
 import { claudeExecutable, claudeJsonPath, home, samePath, type Adapters } from './platform'
 import { AssetStore, assetIdsOfLoop } from './assets'
 import { SessionManager } from './sessions'
@@ -507,6 +508,9 @@ export class SymphonyCore {
       gitStage: (projectId, paths) => this.gitAction(projectId, (cwd) => stage(cwd, paths)),
       gitUnstage: (projectId, paths) => this.gitAction(projectId, (cwd) => unstage(cwd, paths)),
       gitCommit: (projectId, message) => this.gitAction(projectId, (cwd) => commitStaged(cwd, message)),
+      referenceList: (projectId) => listReferences(project(projectId).path),
+      referenceAdd: (projectId, name, data) => addReference(project(projectId).path, name, data),
+      referenceDelete: (projectId, name) => removeReference(project(projectId).path, name),
       readSkill: async (skillId) => {
         const skill = this.allSkills().find((s) => s.id === skillId)
         if (!skill) throw new Error('Unknown skill')

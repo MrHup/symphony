@@ -133,7 +133,8 @@ export function App() {
     return off
   }, [])
 
-  // Dropping a folder anywhere adds it as a project.
+  // Dropping a folder anywhere adds it as a project. Drops a project, prompt or reply box took
+  // (files for .claude-references) arrive here already handled.
   useEffect(() => {
     const over = (e: DragEvent) => {
       if (!e.dataTransfer?.types.includes('Files') || useStore.getState().control) return
@@ -144,8 +145,9 @@ export function App() {
       if (!e.relatedTarget) setDragging(false)
     }
     const drop = (e: DragEvent) => {
-      e.preventDefault()
       setDragging(false)
+      if (e.defaultPrevented) return
+      e.preventDefault()
       for (const file of Array.from(e.dataTransfer?.files ?? [])) {
         const path = api.pathForFile(file)
         if (path) void api.addProject(path)

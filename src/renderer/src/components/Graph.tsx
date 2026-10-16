@@ -1,4 +1,4 @@
-import { applyNodeChanges, ReactFlow, useReactFlow, type Edge, type Node, type NodeChange } from '@xyflow/react'
+import { applyNodeChanges, ReactFlow, SelectionMode, useReactFlow, type Edge, type Node, type NodeChange } from '@xyflow/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { LOCAL_MACHINE_NODE, machineNodeId, splitMachine } from '@shared/remote'
 import { USER_HUB_ID, type NodeStatus, type Point } from '@shared/types'
@@ -224,6 +224,27 @@ function layout(s: State, moved: Record<string, Point>): { nodes: Node[]; edges:
   return { nodes, edges }
 }
 
+/**
+ * Whether Shift is held. React Flow's own selection key would listen through its key handler,
+ * which can cancel keys typed in panels; this only watches.
+ */
+function useShiftHeld(): boolean {
+  const [held, setHeld] = useState(false)
+  useEffect(() => {
+    const sync = (e: KeyboardEvent) => setHeld(e.shiftKey)
+    const release = () => setHeld(false)
+    window.addEventListener('keydown', sync)
+    window.addEventListener('keyup', sync)
+    window.addEventListener('blur', release)
+    return () => {
+      window.removeEventListener('keydown', sync)
+      window.removeEventListener('keyup', sync)
+      window.removeEventListener('blur', release)
+    }
+  }, [])
+  return held
+}
+
 const PERSISTED = (id: string, s: State) =>
   id === USER_HUB_ID || id.startsWith('machine:') || splitMachine(id)?.id === USER_HUB_ID || !!s.projects[id] || !!s.sessions[id] || !!s.loops[id] || !!s.notes[id]
 
@@ -235,6 +256,7 @@ export function Graph() {
   const [tick, setTick] = useState(0)
   const raf = useRef(0)
   const { fitView, getNodes, getViewport, screenToFlowPosition } = useReactFlow()
+  const boxSelect = useShiftHeld()
 
   // Fitting before React Flow has measured newly added nodes frames only part of the graph, so wait for sizes.
   const fitAll = useCallback(() => {
@@ -299,8 +321,10 @@ export function Graph() {
     }
   }, [])
 
-  const onNodeDragStop = useCallback((_: unknown, node: Node) => {
-    if (PERSISTED(node.id, useStore.getState())) void api.moveNode(node.id, node.position)
+  // Selected nodes move together, so each of them is saved.
+  const onNodeDragStop = useCallback((_: unknown, _node: Node, dragged: Node[]) => {
+    const s = useStore.getState()
+    for (const n of dragged) if (PERSISTED(n.id, s)) void api.moveNode(n.id, n.position)
   }, [])
 
   const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
@@ -359,6 +383,12 @@ export function Graph() {
     [screenToFlowPosition]
   )
 
+  // React Flow clears a selection only while elements are selectable, which here is only while Shift is held.
+  const onPaneClick = useCallback(() => {
+    useStore.getState().setComposer(null)
+    setNodes((nds) => (nds.some((n) => n.selected) ? nds.map((n) => (n.selected ? { ...n, selected: false } : n)) : nds))
+  }, [])
+
   return (
     <div className="canvas">
       <ReactFlow
@@ -371,10 +401,14 @@ export function Graph() {
         onNodeContextMenu={onNodeContextMenu}
         nodesDraggable={!state.control}
         onPaneContextMenu={onPaneContextMenu}
-        onPaneClick={() => useStore.getState().setComposer(null)}
+        onPaneClick={onPaneClick}
         nodesConnectable={false}
         edgesFocusable={false}
-        elementsSelectable={false}
+        // Shift+drag on the canvas selects; dragging a selected node moves the whole selection.
+        elementsSelectable={boxSelect}
+        selectionOnDrag={boxSelect}
+        panOnDrag={!boxSelect}
+        selectionMode={SelectionMode.Partial}
         // No canvas keyboard shortcuts: they listen on the whole document and would swallow keys typed in panels.
         deleteKeyCode={null}
         panActivationKeyCode={null}

@@ -165,6 +165,21 @@ button {
   cursor: grabbing;
 }
 
+/* Multi-selection (Shift+drag). Selected nodes are outlined; the group box React Flow draws would
+   cover them and swallow clicks. */
+.canvas .react-flow {
+  --xy-selection-background-color: rgba(233, 229, 220, 0.04);
+  --xy-selection-border: 1px dashed var(--grey-2);
+}
+.canvas .react-flow__node.selected > * {
+  outline: 1px dashed var(--grey-2);
+  outline-offset: 6px;
+  border-radius: 2px;
+}
+.canvas .react-flow__nodesselection {
+  display: none;
+}
+
 .node {
   display: flex;
   align-items: center;

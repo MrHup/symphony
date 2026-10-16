@@ -71,6 +71,7 @@ on one machine can be tested without touching the network or the firewall.
 | Change a skill or MCP server | Right-click it, describe the change, **Start** |
 | Show or hide user skills | Click the `~/.claude` hub (they start hidden) |
 | Sign in to GitHub | Click "sign in to GitHub" on the hub; Symphony shows the one-time code and opens the browser |
+| Tidy the graph | The arrange button in the dock lays everything out as a tree, so no nodes or edges overlap. Sticky notes stay where they are |
 | Move several nodes at once | Shift+drag on empty canvas to select them, then drag any of them. Click the canvas to clear the selection |
 | Remove a project or a finished session | Trash icon on the project (hover) or in the session view |
 

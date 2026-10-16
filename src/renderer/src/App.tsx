@@ -7,7 +7,7 @@ import { ControlBanner } from './components/ControlBanner'
 import { Lightbox } from './components/Files'
 import { FloatingPanel, PanelTray } from './components/FloatingPanel'
 import { Graph } from './components/Graph'
-import { IconMeter, IconPlus, IconRemote, IconTerminal } from './components/icons'
+import { IconArrange, IconMeter, IconPlus, IconRemote, IconTerminal } from './components/icons'
 import { FolderBrowserPanel, PairingPanel } from './components/MachinePanels'
 import { NeedsYouButton, NeedsYouPanel, useNeedsYouShortcut } from './components/NeedsYou'
 import { RemotePanel } from './components/RemotePanel'
@@ -180,6 +180,9 @@ export function App() {
         </button>
         <button className="dock-btn" title="Terminal in your home folder" disabled={!!control} onClick={() => useStore.getState().openTerminal(null)}>
           <IconTerminal size={16} />
+        </button>
+        <button className="dock-btn" title="Arrange the graph so nothing overlaps" disabled={!!control} onClick={() => useStore.getState().requestArrange()}>
+          <IconArrange />
         </button>
         <UsageButton />
         <RemoteButton />

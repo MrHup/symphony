@@ -15,6 +15,9 @@ const SKILL_ROWS = 14
 const LOOP_DY = 64
 const LOOP_SESSION_DX = 36
 const LOOP_SESSION_DY = 46
+const ARRANGE_DX = 90
+const ARRANGE_DY = 18
+const ARRANGE_TREE_GAP = 60
 
 type State = ReturnType<typeof useStore.getState>
 
@@ -206,7 +209,7 @@ function layout(s: State, moved: Record<string, Point>): { nodes: Node[]; edges:
     // Children stacked under their parent (MCP under a hub; a hub under its machine; skills and MCP under a project) hang from its bottom; loops stacked over their machine, from its top.
     const below = b.y > a.y + 40 && b.x >= a.x - 20 && b.x < a.x + 160
     const above = b.y < a.y - 40 && b.x >= a.x - 20 && b.x < a.x + 160
-    if ((hubIds.has(e.source) && mcpIds.has(e.target)) || ((s.projects[e.source] || s.loops[e.source] || machineIds.has(e.source)) && below)) {
+    if ((hubIds.has(e.source) && mcpIds.has(e.target) && b.y > a.y + 40) || ((s.projects[e.source] || s.loops[e.source] || machineIds.has(e.source)) && below)) {
       e.sourceHandle = 'sb'
       e.targetHandle = 'tl'
     } else if (machineIds.has(e.source) && above) {
@@ -222,6 +225,58 @@ function layout(s: State, moved: Record<string, Point>): { nodes: Node[]; edges:
   }
 
   return { nodes, edges }
+}
+
+/**
+ * A tidy left-to-right tree per machine: each depth in its own column, each subtree in its own band
+ * with its parent centered on it, so neither nodes nor edges cross. Sticky notes keep their place.
+ */
+function arrange(nodes: Node[], edges: Edge[]): Record<string, Point> {
+  const byId = new Map(nodes.map((n) => [n.id, n]))
+  const children = new Map<string, string[]>()
+  const hasParent = new Set<string>()
+  for (const e of edges) {
+    if (!byId.has(e.source) || !byId.has(e.target) || hasParent.has(e.target)) continue
+    children.set(e.source, [...(children.get(e.source) ?? []), e.target])
+    hasParent.add(e.target)
+  }
+  const width = (id: string) => byId.get(id)?.measured?.width ?? 0
+  const height = (id: string) => byId.get(id)?.measured?.height ?? 0
+  const roots = nodes.filter((n) => n.type !== 'note' && !hasParent.has(n.id))
+  const positions: Record<string, Point> = {}
+  const origin = roots[0]?.position ?? { x: 0, y: 0 }
+  let top = origin.y
+
+  for (const root of roots) {
+    // First pass: the height of every subtree and the width of every column.
+    const band = new Map<string, number>()
+    const span = new Map<string, number>()
+    const columns: number[] = []
+    const measure = (id: string, depth: number): number => {
+      columns[depth] = Math.max(columns[depth] ?? 0, width(id))
+      const kids = children.get(id) ?? []
+      const total = kids.reduce((sum, k) => sum + measure(k, depth + 1), 0) + Math.max(0, kids.length - 1) * ARRANGE_DY
+      span.set(id, total)
+      band.set(id, Math.max(height(id), total))
+      return band.get(id)!
+    }
+    measure(root.id, 0)
+    const columnX = columns.map((_, d) => origin.x + columns.slice(0, d).reduce((sum, w) => sum + w + ARRANGE_DX, 0))
+
+    // Second pass: place each node in the middle of its band, its children stacked beside it.
+    const place = (id: string, depth: number, y: number) => {
+      const h = band.get(id)!
+      positions[id] = { x: columnX[depth], y: y + (h - height(id)) / 2 }
+      let next = y + (h - span.get(id)!) / 2
+      for (const k of children.get(id) ?? []) {
+        place(k, depth + 1, next)
+        next += band.get(k)! + ARRANGE_DY
+      }
+    }
+    place(root.id, 0, top)
+    top += band.get(root.id)! + ARRANGE_TREE_GAP
+  }
+  return positions
 }
 
 /**
@@ -255,7 +310,7 @@ export function Graph() {
   const moved = useRef<Record<string, Point>>({})
   const [tick, setTick] = useState(0)
   const raf = useRef(0)
-  const { fitView, getNodes, getViewport, screenToFlowPosition } = useReactFlow()
+  const { fitView, getNodes, getEdges, getViewport, screenToFlowPosition } = useReactFlow()
   const boxSelect = useShiftHeld()
 
   // Fitting before React Flow has measured newly added nodes frames only part of the graph, so wait for sizes.
@@ -268,6 +323,21 @@ export function Graph() {
     }
     requestAnimationFrame(attempt)
   }, [fitView, getNodes])
+
+  // The dock's Arrange button: lay everything out again, keep it, and frame it.
+  const arranged = useRef(0)
+  useEffect(() => {
+    if (state.arrangeRequest === arranged.current) return
+    arranged.current = state.arrangeRequest
+    const s = useStore.getState()
+    for (const [id, p] of Object.entries(arrange(getNodes(), getEdges()))) {
+      moved.current[id] = p
+      if (PERSISTED(id, s)) void api.moveNode(id, p)
+    }
+    setTick((t) => t + 1)
+    const t = setTimeout(fitAll, 120)
+    return () => clearTimeout(t)
+  }, [state.arrangeRequest, getNodes, getEdges, fitAll])
 
   // Refit when the graph's structure changes (projects added/removed, config arrives, hub toggled), not on every status change.
   const structure = `${Object.keys(state.projects).sort().join(',')}|${state.skills.length > 0}|${state.mcp.length > 0}|${JSON.stringify(state.skillsShown)}|${Object.values(state.machines).map((m) => `${m.id}:${m.status === 'pairing'}`).sort().join(',')}`

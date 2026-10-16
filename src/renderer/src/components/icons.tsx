@@ -83,6 +83,16 @@ export const IconLoop = ({ size = 14 }: { size?: number }) => (
   </svg>
 )
 
+/** A small tree: arrange the graph. */
+export const IconArrange = ({ size = 16 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" {...base}>
+    <rect x="1.75" y="6.5" width="3" height="3" rx="0.5" />
+    <rect x="11.25" y="2.5" width="3" height="3" rx="0.5" />
+    <rect x="11.25" y="10.5" width="3" height="3" rx="0.5" />
+    <path d="M4.75 8H8M8 4v8M8 4h3.25M8 12h3.25" />
+  </svg>
+)
+
 /** Two screens joined by a line: remote orchestration. */
 export const IconRemote = ({ size = 16 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 16 16" {...base}>

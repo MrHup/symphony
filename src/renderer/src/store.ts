@@ -93,6 +93,8 @@ interface State {
   colorMenu: { machineId: string; left: number; right: number; top: number } | null
   /** The image viewer: images of one session or loop, and the one shown. */
   lightbox: { ownerId: string; files: AssetRef[]; index: number } | null
+  /** Bumped by the dock's Arrange button; the graph then lays itself out again. */
+  arrangeRequest: number
   apply(e: MainEvent): void
   load(s: AppSnapshot): void
   openPanel(kind: PanelKind, targetId: string): void
@@ -105,6 +107,7 @@ interface State {
   setColorMenu(m: State['colorMenu']): void
   setMachineColor(machineId: string, color: MachineColor | null): void
   setLightbox(l: State['lightbox']): void
+  requestArrange(): void
   toggleHub(id: string): void
   setDefaultModel(model: string, machineId?: string): void
   setModelEffort(model: string, effort: EffortLevel | null, machineId?: string): void
@@ -209,6 +212,7 @@ export const useStore = create<State>((set, get) => ({
   composer: null,
   colorMenu: null,
   lightbox: null,
+  arrangeRequest: 0,
 
   load(s) {
     const prev = get().waitingSince
@@ -448,6 +452,10 @@ export const useStore = create<State>((set, get) => ({
 
   setLightbox(l) {
     set({ lightbox: l })
+  },
+
+  requestArrange() {
+    set((s) => ({ arrangeRequest: s.arrangeRequest + 1 }))
   },
 
   toggleHub(id) {

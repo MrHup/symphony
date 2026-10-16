@@ -17,6 +17,9 @@
   /* Diff viewer only: desaturated and far dimmer than the signal. */
   --diff-add: rgba(126, 156, 112, 0.16);
   --diff-del: rgba(176, 104, 94, 0.16);
+  /* Your own prompts in a transcript: a dull blue, so they stand out without reading as the signal. */
+  --prompt: #7ea6d9;
+  --prompt-bg: rgba(126, 166, 217, 0.2);
   --sans: 'IBM Plex Sans', system-ui, sans-serif;
   --mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Menlo, monospace;
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
@@ -847,8 +850,10 @@ select.branch:hover {
 .t-user {
   white-space: pre-wrap;
   word-break: break-word;
-  padding: 2px 0 2px 12px;
-  border-left: 2px solid var(--grey-3);
+  padding: 8px 12px;
+  border-left: 3px solid var(--prompt);
+  border-radius: 0 6px 6px 0;
+  background: var(--prompt-bg);
   color: var(--bone);
   font-size: 13px;
   max-height: 420px;

@@ -530,6 +530,56 @@ button.identity:hover {
   height: 16px;
   cursor: nwse-resize;
 }
+/* Hidden, not unmounted: what runs inside keeps running. */
+.panel.is-minimized {
+  display: none;
+}
+
+/* Minimized panels: chips beside the dock buttons, wrapping upward. */
+.panel-tray {
+  display: flex;
+  flex-wrap: wrap-reverse;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100vw - 300px);
+}
+.panel-tray:not(:empty) {
+  margin-left: 8px;
+}
+.tray-chip {
+  display: flex;
+  align-items: center;
+  height: 40px;
+  max-width: 240px;
+  padding-right: 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 20px;
+  background: var(--bg-raised);
+  animation: panel-in 180ms var(--ease-out);
+}
+.tray-chip:hover {
+  border-color: var(--grey-2);
+}
+.tray-chip-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 100%;
+  padding: 0 6px 0 16px;
+  background: none;
+  border: 0;
+  color: var(--grey-3);
+}
+.tray-chip-open:hover {
+  color: var(--bone);
+}
+.tray-chip-open .main {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 /* ---------- sticky notes ---------- */
 

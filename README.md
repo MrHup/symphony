@@ -51,6 +51,7 @@ on one machine can be tested without touching the network or the firewall.
 |---|---|
 | Add a project | Click **+** (bottom left) and pick a folder, or drop a folder onto the window |
 | Open a terminal | The terminal button on a project opens PowerShell in that folder; the one in the bottom-left dock opens it in your home folder. Each click opens another floating terminal; closing one ends its shell |
+| Minimize a window | The − in its header. It waits as a chip next to the dock (click to restore); a minimized terminal or session keeps running |
 | Check Claude usage | The meter in the bottom-left dock shows the 5-hour, weekly and weekly-per-model (Fable) windows as bars; click it for exact percentages and reset times |
 | Start work | Right-click a project, type a prompt, pick a model and its effort, **Start** (Ctrl/⌘+Enter) |
 | Set effort | The picker next to the model lists only the levels that model accepts (low, medium, high, extra-high, max) and is hidden for models without effort, such as Haiku. Each model remembers its own effort; "Default effort" leaves it to Claude Code |

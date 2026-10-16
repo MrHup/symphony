@@ -5,7 +5,7 @@ import { ColorMenu } from './components/ColorMenu'
 import { ComposerBubble } from './components/Composer'
 import { ControlBanner } from './components/ControlBanner'
 import { Lightbox } from './components/Files'
-import { FloatingPanel } from './components/FloatingPanel'
+import { FloatingPanel, PanelTray } from './components/FloatingPanel'
 import { Graph } from './components/Graph'
 import { IconMeter, IconPlus, IconRemote, IconTerminal } from './components/icons'
 import { FolderBrowserPanel, PairingPanel } from './components/MachinePanels'
@@ -184,6 +184,7 @@ export function App() {
         <UsageButton />
         <RemoteButton />
         <NeedsYouButton />
+        <PanelTray />
       </div>
       {panels.map((p) => (
         <PanelFor key={p.id} panel={p} />

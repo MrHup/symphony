@@ -1,14 +1,23 @@
 import { useRef, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { clock, machineUp, useStore, type Panel } from '../store'
-import { IconClose } from './icons'
+import { IconClose, IconMinus } from './icons'
+
+const TRAY_ID = 'panel-tray'
+
+/** Chips of minimized panels, in the dock. */
+export function PanelTray() {
+  return <div className="panel-tray" id={TRAY_ID} />
+}
 
 /**
  * A draggable, resizable window floating over the graph. Drag by the header, resize from the corner.
  * With a machineId, the header names that machine, and while it is offline a one-line banner says
- * the panel shows its last known state.
+ * the panel shows its last known state. Minimized, it stays mounted (a terminal keeps its shell) but
+ * hidden, and its chip in the tray brings it back.
  */
 export function FloatingPanel({ panel, title, meta, actions, children, machineId }: { panel: Panel; title: ReactNode; meta?: ReactNode; actions?: ReactNode; children: ReactNode; machineId?: string }) {
-  const { updatePanel, closePanel, raisePanel } = useStore.getState()
+  const { updatePanel, closePanel, raisePanel, minimizePanel } = useStore.getState()
   const machine = useStore((s) => (machineId ? s.machines[machineId] : undefined))
   const start = useRef<{ mx: number; my: number; x: number; y: number; w: number; h: number } | null>(null)
 
@@ -42,34 +51,54 @@ export function FloatingPanel({ panel, title, meta, actions, children, machineId
     el.addEventListener('pointerup', onUp)
   }
 
+  const tray = panel.minimized ? document.getElementById(TRAY_ID) : null
+
   return (
-    <section
-      className="panel"
-      style={{ left: panel.x, top: panel.y, width: panel.w, height: panel.h, zIndex: panel.z }}
-      onPointerDown={() => raisePanel(panel.id)}
-      onKeyDown={(e) => {
-        // Escape inside the editor belongs to Monaco (find widget etc.), and must not drop unsaved edits.
-        if (e.key === 'Escape' && !e.defaultPrevented && !(e.target as Element).closest('.monaco-editor, textarea, input')) closePanel(panel.id)
-      }}
-    >
-      <header className="panel-head" onPointerDown={track('move')}>
-        <div className="panel-title">
-          {machine && <span className="machine-tag">{machine.name}</span>}
-          <span className="main">{title}</span>
-          {meta && <span className="meta">{meta}</span>}
-        </div>
-        {actions}
-        <button className="icon-btn" title="Close" onClick={() => closePanel(panel.id)}>
-          <IconClose />
-        </button>
-      </header>
-      {machine && !machineUp(machine) && (
-        <div className="panel-banner">
-          {machine.name} is {machine.status === 'asleep' ? 'asleep' : machine.status === 'quit' ? 'not running Symphony' : 'offline'}. Showing its last known state from {clock(machine.since)}.
-        </div>
-      )}
-      <div className="panel-body">{children}</div>
-      <div className="panel-resize" onPointerDown={track('resize')} />
-    </section>
+    <>
+      <section
+        className={`panel${panel.minimized ? ' is-minimized' : ''}`}
+        style={{ left: panel.x, top: panel.y, width: panel.w, height: panel.h, zIndex: panel.z }}
+        onPointerDown={() => raisePanel(panel.id)}
+        onKeyDown={(e) => {
+          // Escape inside the editor belongs to Monaco (find widget etc.), and must not drop unsaved edits.
+          if (e.key === 'Escape' && !e.defaultPrevented && !(e.target as Element).closest('.monaco-editor, textarea, input')) closePanel(panel.id)
+        }}
+      >
+        <header className="panel-head" onPointerDown={track('move')}>
+          <div className="panel-title">
+            {machine && <span className="machine-tag">{machine.name}</span>}
+            <span className="main">{title}</span>
+            {meta && <span className="meta">{meta}</span>}
+          </div>
+          {actions}
+          <button className="icon-btn" title="Minimize" onClick={() => minimizePanel(panel.id)}>
+            <IconMinus size={14} />
+          </button>
+          <button className="icon-btn" title="Close" onClick={() => closePanel(panel.id)}>
+            <IconClose />
+          </button>
+        </header>
+        {machine && !machineUp(machine) && (
+          <div className="panel-banner">
+            {machine.name} is {machine.status === 'asleep' ? 'asleep' : machine.status === 'quit' ? 'not running Symphony' : 'offline'}. Showing its last known state from {clock(machine.since)}.
+          </div>
+        )}
+        <div className="panel-body">{children}</div>
+        <div className="panel-resize" onPointerDown={track('resize')} />
+      </section>
+      {tray &&
+        createPortal(
+          <div className="tray-chip">
+            <button className="tray-chip-open" title="Restore" onClick={() => raisePanel(panel.id)}>
+              {machine && <span className="machine-tag">{machine.name}</span>}
+              <span className="main">{title}</span>
+            </button>
+            <button className="icon-btn" title="Close" onClick={() => closePanel(panel.id)}>
+              <IconClose />
+            </button>
+          </div>,
+          tray
+        )}
+    </>
   )
 }

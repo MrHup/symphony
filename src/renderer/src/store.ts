@@ -40,6 +40,8 @@ export interface Panel {
   w: number
   h: number
   z: number
+  /** Folded into the dock's tray; still mounted, so terminals and sessions keep running. */
+  minimized?: boolean
 }
 
 export interface Composer {
@@ -95,7 +97,9 @@ interface State {
   load(s: AppSnapshot): void
   openPanel(kind: PanelKind, targetId: string): void
   closePanel(id: string): void
+  /** Bring a panel to the front, restoring it when minimized. */
   raisePanel(id: string): void
+  minimizePanel(id: string): void
   updatePanel(id: string, patch: Partial<Panel>): void
   setComposer(c: Composer | null): void
   setColorMenu(m: State['colorMenu']): void
@@ -413,7 +417,11 @@ export const useStore = create<State>((set, get) => ({
   },
 
   raisePanel(id) {
-    set((s) => ({ panels: s.panels.map((p) => (p.id === id ? { ...p, z: ++zTop } : p)) }))
+    set((s) => ({ panels: s.panels.map((p) => (p.id === id ? { ...p, z: ++zTop, minimized: false } : p)) }))
+  },
+
+  minimizePanel(id) {
+    set((s) => ({ panels: s.panels.map((p) => (p.id === id ? { ...p, minimized: true } : p)) }))
   },
 
   updatePanel(id, patch) {

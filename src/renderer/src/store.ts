@@ -62,8 +62,8 @@ interface State {
   mcp: McpInfo[]
   git: Record<string, GitStats>
   hubPosition: Point
-  /** Hubs the user folded away, by hub node id. */
-  hubClosed: Record<string, boolean>
+  /** Hubs whose user skills are shown, by hub node id. Hidden by default: there can be dozens. */
+  skillsShown: Record<string, boolean>
   gh: GhAccounts
   models: ModelOption[]
   defaultModel: string
@@ -187,7 +187,7 @@ export const useStore = create<State>((set, get) => ({
   mcp: [],
   git: {},
   hubPosition: { x: -420, y: 0 },
-  hubClosed: {},
+  skillsShown: {},
   gh: { installed: false, hosts: {} },
   models: [],
   defaultModel: 'opus',
@@ -451,7 +451,7 @@ export const useStore = create<State>((set, get) => ({
   },
 
   toggleHub(id) {
-    set((s) => ({ hubClosed: { ...s.hubClosed, [id]: !s.hubClosed[id] } }))
+    set((s) => ({ skillsShown: { ...s.skillsShown, [id]: !s.skillsShown[id] } }))
   },
 
   setDefaultModel(model, machineId) {

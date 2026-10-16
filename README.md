@@ -69,7 +69,7 @@ on one machine can be tested without touching the network or the firewall.
 | Read a skill | Click it (Source or Rendered) |
 | Inspect an MCP server | Click it. Secret values are hidden |
 | Change a skill or MCP server | Right-click it, describe the change, **Start** |
-| Show or hide user skills/MCP | Click the `~/.claude` hub |
+| Show or hide user skills | Click the `~/.claude` hub (they start hidden) |
 | Sign in to GitHub | Click "sign in to GitHub" on the hub; Symphony shows the one-time code and opens the browser |
 | Remove a project or a finished session | Trash icon on the project (hover) or in the session view |
 

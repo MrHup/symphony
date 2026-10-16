@@ -237,7 +237,7 @@ export function HubNode({ data }: NodeProps<HubNodeType>) {
   const lock = useLock(data.machineId)
   const accounts = Object.entries(gh.hosts).flatMap(([host, list]) => list.filter((a) => a.active).map((a) => (host === 'github.com' ? a.login : `${a.login}@${host}`)))
   return (
-    <div className={`node node-hub${data.offline ? ' is-offline' : ''}`} title={data.open ? 'Hide user skills and MCP servers' : 'Show user skills and MCP servers'}>
+    <div className={`node node-hub${data.offline ? ' is-offline' : ''}`} title={data.open ? 'Hide user skills' : 'Show user skills'}>
       <Glyph status="idle" size={22} variant="hub" />
       <div className="node-text">
         <span className="node-title">~/.claude</span>

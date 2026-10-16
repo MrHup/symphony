@@ -70,7 +70,7 @@ function layout(s: State, moved: Record<string, Point>): { nodes: Node[]; edges:
     const hub = at(hubId, root.hubPos)
     pos.set(hubId, hub)
     hubIds.add(hubId)
-    const open = !s.hubClosed[hubId]
+    const open = !!s.skillsShown[hubId]
     const userSkills = s.skills.filter((k) => !k.projectId && k.machineId === root.machineId)
     const userMcp = s.mcp.filter((m) => !m.projectId && m.machineId === root.machineId)
     nodes.push({ id: hubId, type: 'hub', position: hub, className: tint(root.machineId), data: { open, skills: userSkills.length, mcp: userMcp.length, machineId: root.machineId, offline } })
@@ -78,15 +78,17 @@ function layout(s: State, moved: Record<string, Point>): { nodes: Node[]; edges:
     const rows = Math.min(SKILL_ROWS, Math.max(1, userSkills.length))
     const cols = Math.ceil(userSkills.length / SKILL_ROWS)
     skillsLeftEdge.set(hubId, hub.x - 240 - (cols - 1) * SKILL_COL_W)
-    if (!open) continue
-    userSkills.forEach((k, i) => {
-      const c = Math.floor(i / SKILL_ROWS)
-      const r = i % SKILL_ROWS
-      const p = at(k.id, { x: hub.x - 240 - c * SKILL_COL_W, y: hub.y + 6 + (r - (rows - 1) / 2) * SKILL_DY })
-      pos.set(k.id, p)
-      nodes.push({ id: k.id, type: 'skill', position: p, className: tint(root.machineId), data: { skill: k, offline } })
-      edge(hubId, k.id, false, true, offline)
-    })
+    // MCP servers always show: one may need you to authenticate.
+    if (open) {
+      userSkills.forEach((k, i) => {
+        const c = Math.floor(i / SKILL_ROWS)
+        const r = i % SKILL_ROWS
+        const p = at(k.id, { x: hub.x - 240 - c * SKILL_COL_W, y: hub.y + 6 + (r - (rows - 1) / 2) * SKILL_DY })
+        pos.set(k.id, p)
+        nodes.push({ id: k.id, type: 'skill', position: p, className: tint(root.machineId), data: { skill: k, offline } })
+        edge(hubId, k.id, false, true, offline)
+      })
+    }
     userMcp.forEach((m, i) => {
       const p = at(m.id, { x: hub.x + 250, y: hub.y + 64 + i * SKILL_DY })
       pos.set(m.id, p)
@@ -246,7 +248,7 @@ export function Graph() {
   }, [fitView, getNodes])
 
   // Refit when the graph's structure changes (projects added/removed, config arrives, hub toggled), not on every status change.
-  const structure = `${Object.keys(state.projects).sort().join(',')}|${state.skills.length > 0}|${state.mcp.length > 0}|${JSON.stringify(state.hubClosed)}|${Object.values(state.machines).map((m) => `${m.id}:${m.status === 'pairing'}`).sort().join(',')}`
+  const structure = `${Object.keys(state.projects).sort().join(',')}|${state.skills.length > 0}|${state.mcp.length > 0}|${JSON.stringify(state.skillsShown)}|${Object.values(state.machines).map((m) => `${m.id}:${m.status === 'pairing'}`).sort().join(',')}`
   useEffect(() => {
     const t = setTimeout(fitAll, 120)
     return () => clearTimeout(t)
@@ -280,7 +282,7 @@ export function Graph() {
       })
     })
     // Recompute on any state change or drag movement.
-  }, [state.projects, state.sessions, state.agents, state.skills, state.mcp, state.git, state.hubPosition, state.hubClosed, state.loops, state.machines, state.machinePosition, state.machineColors, state.notes, tick])
+  }, [state.projects, state.sessions, state.agents, state.skills, state.mcp, state.git, state.hubPosition, state.skillsShown, state.loops, state.machines, state.machinePosition, state.machineColors, state.notes, tick])
 
   const onNodesChange = useCallback((changes: NodeChange[]) => {
     let movedAny = false

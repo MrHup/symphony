@@ -1,0 +1,88 @@
+/* The Mobile UI panel; it reuses the loop editor's fields and cards. */
+.mui .step-opts .spacer {
+  flex: 1;
+}
+select.mui-source {
+  max-width: 220px;
+}
+.mui-recipe .step-head {
+  flex-wrap: wrap;
+}
+.mui-name {
+  font-size: 14px;
+  font-weight: 500;
+}
+.mui-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+.mui-prompt {
+  margin: 0;
+  color: var(--grey-3);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.mui-path {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--grey-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mui-preview {
+  display: flex;
+  gap: 14px;
+  padding: 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+}
+.mui-qr {
+  width: 156px;
+  height: 156px;
+  flex: none;
+  border-radius: 4px;
+}
+.mui-preview-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--grey-3);
+}
+.mui-preview-text p {
+  margin: 0;
+}
+.mui-url {
+  max-width: 100%;
+  padding: 0;
+  font-family: var(--mono);
+  color: var(--bone);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mui-preview-text summary {
+  cursor: pointer;
+  color: var(--grey-2);
+}
+.mui-preview-text details p {
+  margin-top: 6px;
+}
+.mui-doc {
+  max-height: 520px;
+  overflow-y: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg-sunken);
+}
+.mui-doc img {
+  max-width: 200px;
+  border-radius: 6px;
+}

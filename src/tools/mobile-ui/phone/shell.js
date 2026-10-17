@@ -139,6 +139,24 @@
   })
   $('pick-view').onclick = () => choose(view(), 'view')
   $('pick-cancel').onclick = close
+
+  // The bar moves up or down when dragged by its label, to uncover what is under it.
+  const bar = pick.querySelector('.bar')
+  const barTop = Number(localStorage.getItem('pick-bar'))
+  if (barTop) bar.style.top = `${barTop}px`
+  const grip = bar.querySelector('span')
+  let barDrag = null
+  grip.addEventListener('pointerdown', (e) => {
+    barDrag = { y: e.clientY, top: bar.offsetTop }
+    grip.setPointerCapture(e.pointerId)
+  })
+  grip.addEventListener('pointermove', (e) => {
+    if (!barDrag) return
+    const top = Math.min(innerHeight - bar.offsetHeight - 8, Math.max(8, barDrag.top + e.clientY - barDrag.y))
+    bar.style.top = `${top}px`
+    localStorage.setItem('pick-bar', String(top))
+  })
+  grip.addEventListener('pointerup', () => (barDrag = null))
   $('cancel').onclick = close
   $('parent').onclick = () => {
     const up = target.el.parentElement

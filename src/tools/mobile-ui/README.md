@@ -42,8 +42,8 @@ home screen.
    under the recipe's project, like any other session.
 3. **Preview on phone** shows a QR code and the link. Scan it.
 4. On the phone, tap the tab on the right edge (drag it to move it), then tap what your comment is about:
-   a component, **Wider** for what contains it, or **Whole view**. Write what should change and **Send
-   to Claude**.
+   a component, **Wider** for what contains it, or **Whole view** (drag the bar at the top by its
+   label to uncover what is under it). Write what should change and **Send to Claude**.
 5. Each comment starts a new session on the recipe's machine, shown on the graph under the recipe.
    The top of the phone's screen says while Claude works, and the app reloads on the same screen once
    it is done. If the session asks for approval or a question, answer it in Symphony.

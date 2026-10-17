@@ -17,6 +17,7 @@ Prerequisites:
   ships with the Agent SDK, so a separate CLI install is not required.
 - Optional: [GitHub CLI](https://cli.github.com) (`gh`) for the GitHub identity feature. Symphony
   can sign you in to gh from the hub node, so no terminal is needed for that either.
+- Tools (see "Tools" below) can need more; each one's documentation lists what.
 
 ```bash
 npm install
@@ -32,7 +33,7 @@ Other scripts:
 | `npm run typecheck` | Type-check the main process and the UI |
 | `npm run drive` | Launch the built app under Playwright and accept test commands over HTTP (see `scripts/drive.mjs`) |
 | `npm run headless -- <command>` | Run this machine as a remote machine without Electron or a window (see "Headless remote machine" below) |
-| `npm test` | Protocol, control and security tests of remote orchestration (`test/`), under plain Node |
+| `npm test` | Protocol, control and security tests of remote orchestration and of the Mobile UI phone preview, and loop tests (`test/`), under plain Node |
 
 `npm run dev` and `npm start` go through `scripts/run.mjs`, which clears `ELECTRON_RUN_AS_NODE`.
 VS Code and other Electron-based tools export that variable to the processes they spawn, and it
@@ -56,6 +57,7 @@ on one machine can be tested without touching the network or the firewall.
 | Start work | Right-click a project, type a prompt, pick a model and its effort, **Start** (Ctrl/⌘+Enter) |
 | Set effort | The picker next to the model lists only the levels that model accepts (low, medium, high, extra-high, max) and is hidden for models without effort, such as Haiku. Each model remembers its own effort; "Default effort" leaves it to Claude Code |
 | Build a loop | The loop button on a machine node (This PC, or a remote machine) opens the loop editor for a loop on that machine (see Loops below) |
+| Use a tool | The tools button on a machine node lists the tools; pick one to open its panel for that machine (see Tools below) |
 | Approve automatically | The double-check button on a machine node (This PC, or a remote machine). While it is on (bone white, and for this PC "auto-approving" next to the Symphony mark), Claude Code permission prompts on that machine are allowed without asking, and any waiting ones are released. It is off every time Symphony starts |
 | Dictate a prompt | The mic button in the prompt bubble, a session's reply box or a loop step. Click, speak (the words appear dimmed as you speak), click again; the text is cleaned up and inserted where the cursor was. Escape cancels while listening |
 | Attach images | Paste them (Ctrl/⌘+V) into the right-click prompt bubble or a session's reply box. Thumbnails appear above the text; hover one to remove it. A reply can be just images |
@@ -149,6 +151,33 @@ button on a machine node; its node sits above that machine on the graph.
   are listed in the loop's history with "Open session". Loops saved before loops were graphs load
   as a chain of their steps, on their old project's machine, with the project folder as every agent
   step's session folder; give their steps input and output folders before running them again.
+
+## Tools
+
+A tool is a module of this repo with its own logic, skills, agent tools and panel, for getting one
+kind of work done. Pick it from the tools button on a machine node: it runs on that machine (this
+PC, or a remote machine), and so do its sessions, which appear on the graph like any other. Each tool
+documents what it does, what it needs (API keys, browsers, SDKs that Symphony itself does not) and
+how to use it:
+
+| Tool | What it does |
+|---|---|
+| [Mobile UI](src/tools/mobile-ui/README.md) | A UI recipe of a mobile app (a working web replica and its documentation with screenshots), previewed full screen on your phone, where you select a component or view and ask Claude to change it |
+
+How tools fit in:
+
+- **One folder each.** `src/tools/<id>/` holds the tool's code, its `README.md`, and whatever it
+  copies or serves (skills, templates, pages). It is registered once for the main process
+  (`src/main/tools.ts`) and once for the window (`src/renderer/src/tools.ts`).
+- **Two parts.** The tool's **core** runs inside the core of the machine it is used on and keeps its
+  state there; the window reaches it with one request, `toolCall(tool, method, args, machineId)`,
+  which goes over the link like every other request, so a tool works on remote machines without
+  remote code of its own. Its state rides along with the snapshot and in `tool` events. A tool may
+  also have a **local part**, which runs on the machine with the window (`toolLocal`, never routed),
+  for things that belong where the user is, such as Mobile UI's phone preview server.
+- **On remote machines**, every tool request that changes something is written to the audit log
+  (methods named `get…` only read and are left out), and the read-only rule applies as for
+  everything else.
 
 ## Files shown in sessions
 
@@ -368,6 +397,14 @@ with your own environment, so a `claude` you run there yourself is not covered.
 | Machines without Electron | `npm run headless`: the same core and link bundled for plain Node, with Electron swapped for a small stand-in at build time | No second implementation of anything the orchestrator can do, and the Electron app is untouched. Only the device key, power events and thumbnails differ, and those are the only things the stand-in provides. Rejected: a separate agent speaking its own protocol (every feature twice) and running Electron with no window (still needs Electron's binary and system libraries, which these machines lack). |
 | Remote machine's own window | Read-only while the orchestrator is connected; Disconnect always works | Two people answering the same approvals would need conflict rules. The rule is enforced in the core, so a misbehaving UI cannot get around it. |
 | Usage | Shown for the orchestrator's own account only | Each machine signs in to its own Claude account; remote machines do not poll usage while linked. |
+| Tools | A folder per tool in `src/tools/<id>/`, with a core reached through one routed request (`toolCall`) and an optional local part on the window's machine | A tool's code, skills, templates and documentation stay together, and its requirements stay out of Symphony's setup. The core reuses remote orchestration as it is (routing, resending, audit), so no tool needs remote code. The local part exists because some things belong where the person is, not where the work runs, like a server a phone connects to. |
+| Mobile UI recipe stack | Plain HTML, CSS and JavaScript modules with no build step; a hash router where every screen, view and state has a route; the Rive web runtime (`@rive-app/canvas`) copied into each recipe | Claude's edits reach the phone in about a second, with no SDK or build to install. In the DOM the phone can select a component and name it (`data-ui`), which Flutter web cannot: it draws to a canvas. Routes make every state reachable for screenshots and for returning to the same screen after a reload. Rive's official web runtime plays `.riv` files, offline. Rejected: Flutter (an SDK and a build per change, nothing selectable) and React Native / Expo (a dev server and Expo Go, and no same-document access to select elements). |
+| Where recipes live | In Symphony's data folder on the recipe's machine (`tools/mobile-ui/<name>/`), and that folder is added as a project | Nothing is written into the user's own app, which sessions only read. As a project, the recipe gives its sessions a node on the graph, and its terminal and CLAUDE.md work as for any project. Like loops' temporary folders, it is created by Symphony on that machine, so it needs no shared-folder exception. |
+| Phone to a remote recipe | The preview server runs on the machine with the window and relays files and comments over the existing link | Remote machines keep opening no port, the phone trusts one certificate and talks to one address, and the firewall asks once. Files are fetched with an etag, so unchanged ones do not cross the link again. Rejected: serving from the remote machine (a listening port, a certificate and a firewall exception on every machine). |
+| Preview transport | HTTPS on port 47822 with a certificate signed by a local authority the phone trusts once; the authority is name-constrained to private IPv4 addresses | A secure origin lets the preview install from the home screen and open full screen, without browser bars, on Android (an HTTP page added to the home screen opens in a browser tab) as on iPhone, and keeps secure-context APIs available to recipes. The name constraints mean trusting it cannot let anything impersonate a public site, and its key is sealed by the OS. |
+| Preview exposure | Off until a preview is opened, private addresses only, every path starts with a 256-bit secret; Stop ends a link for good | The server can start sessions, so it follows the remote-orchestration rules: nothing listens unless in use, never on a public interface, and nobody on the network can do anything without the link. |
+| What a comment passes | The text; the selection (component or whole view, its `data-ui`/`data-screen` name, selector, text and markup); the route and screen size; a screenshot of that view at the phone's size with the selection outlined, and the page's errors | Name and selector point Claude to the code, the route lets it capture the same view again, and the picture shows what the person saw. The screenshot is taken on the recipe's machine in headless Chrome or Edge, because a phone browser cannot capture a page itself. |
+| Recipe documentation | Updated after every change, for the parts that changed (text and screenshots) | A recipe is handed over as an app plus its documentation; documentation that lags behind the app is wrong in exactly the places that were just discussed. It costs a little time per comment, and the phone reloads only when the session is done. |
 
 ## Code map
 
@@ -396,12 +433,15 @@ with your own environment, so a `claude` you run there yourself is not covered.
 | `src/renderer/src/components/TerminalPanel.tsx` | Floating terminal (xterm.js) |
 | `src/renderer/src/components/UsagePanel.tsx` | Usage bars and reset times |
 | `src/renderer/src/components/LoopPanel.tsx` | Loop editor (the graph of steps and folders), running view, human review card, history |
+| `src/main/tools.ts` | The tool registry for the main process: each tool's core in the core (`ToolManager`), its local part on the window's machine (`LocalTools`) |
+| `src/renderer/src/tools.ts`, `components/ToolMenu.tsx` | The tool registry for the window, a machine node's tools menu, the tool panel |
+| `src/tools/<id>/` | One tool each, with its own README: [Mobile UI](src/tools/mobile-ui/README.md) |
 | `src/renderer/src/speech/` | Dictation: microphone capture, the local Whisper worker, live preview |
 | `src/main/dictation.ts` | Clean-up of dictated text with Claude Haiku |
 | `src/headless/` | The headless remote machine: `index.ts` (command line, core and link without a window), `electron.ts` (plain-Node stand-in for the Electron APIs the remote path uses); built and run by `scripts/headless.mjs` |
 | `scripts/drive.mjs` | Test driver: Playwright `_electron` behind a small HTTP command server |
 | `src/renderer/src/components/RemotePanel.tsx`, `MachinePanels.tsx`, `NeedsYou.tsx`, `ControlBanner.tsx` | Remote-machines panel, pairing and folder browser, the Needs you list, the read-only banner |
-| `scripts/test.mjs`, `test/` | Remote-orchestration tests: an orchestrator and a remote machine in one Node process over TLS on 127.0.0.1 |
+| `scripts/test.mjs`, `test/` | Remote-orchestration tests (an orchestrator and a remote machine in one Node process over TLS on 127.0.0.1), loop tests, Mobile UI preview tests |
 
 ## What was verified on Windows
 
@@ -467,8 +507,25 @@ on Windows 11, driving the built app:
   skills; adding a project through the shared-folder check (a folder outside it refused); a Haiku
   pipeline running on it and answered in the app; killed and started again with `run` (relinked);
   revoked from the app (the client said so and exited); `log` showing every step.
+- Mobile UI, with the app as orchestrator and a headless remote machine on loopback (separate
+  profiles), and Chrome at 390×844 with touch as the phone: a recipe from a prompt alone and one from
+  a folder plus a prompt, on this PC and on the remote machine (Sonnet, low effort), each with an app,
+  RECIPE.md and screenshots taken with `capture_screens`, the source folders untouched; the tools menu
+  and panel for both machines; Preview on phone with QR code and link; on the phone, the app full
+  screen, a component and a whole view selected and commented on, each comment starting a session
+  under the recipe on the right machine (and in the remote machine's audit log), the change appearing
+  after one reload on the same route, and RECIPE.md updated; a `.riv` file playing with the recipe's
+  own runtime through the remote relay; docs with screenshots in the panel for a remote recipe; Stop
+  preview ending a link; delete removing the folder, project and sessions; after a restart, recipes
+  back, the server off, and an unstopped preview's link unchanged. `npm test` covers the preview
+  server's exposure rules and the certificate's name constraints.
 
 Not verified on this machine:
+
+- **Mobile UI on a real phone and network**: installing and trusting the certificate on iOS and
+  Android, adding the preview to the home screen and opening it full screen, phone browsers honoring
+  the name constraints, and Windows Firewall for port 47822. The phone was emulated in desktop Chrome
+  with certificate errors ignored, on loopback.
 
 - **Remote orchestration on a real network**: mDNS discovery, a remote machine on another computer,
   Windows Firewall, sleep and wake, and Wi-Fi changes (the two-instance test runs on loopback).

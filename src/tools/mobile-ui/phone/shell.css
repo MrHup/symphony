@@ -1,0 +1,186 @@
+/* The preview's own controls, in Symphony's colors. The app fills the screen underneath. */
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  background: #131312;
+  color: #e9e5dc;
+  font: 15px/1.4 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+[hidden] {
+  display: none !important;
+}
+button {
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 8px;
+  border: 1px solid #3b3a36;
+  background: #1a1a18;
+  color: #e9e5dc;
+  font: inherit;
+  font-size: 14px;
+}
+button.primary {
+  background: #e9e5dc;
+  border-color: #e9e5dc;
+  color: #131312;
+}
+button:disabled {
+  opacity: 0.4;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#app {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #fff;
+}
+
+#pick {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  touch-action: none;
+}
+#pick .bar {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: calc(env(safe-area-inset-top) + 8px);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 8px 8px 12px;
+  border-radius: 12px;
+  background: rgba(19, 19, 18, 0.92);
+}
+#pick .bar span {
+  flex: 1;
+  font-size: 13px;
+}
+
+/* A dark and a light ring, so the selection shows on any app. */
+#mark {
+  position: fixed;
+  z-index: 11;
+  pointer-events: none;
+  border-radius: 4px;
+  box-shadow:
+    0 0 0 2px #131312,
+    0 0 0 4px #e9e5dc;
+  transition:
+    left 120ms ease-out,
+    top 120ms ease-out,
+    width 120ms ease-out,
+    height 120ms ease-out;
+}
+
+#sheet {
+  position: fixed;
+  z-index: 12;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 12px calc(env(safe-area-inset-bottom) + 12px);
+  border-top: 1px solid #3b3a36;
+  border-radius: 14px 14px 0 0;
+  background: #1a1a18;
+  animation: rise 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+#sheet .row:last-child {
+  justify-content: flex-end;
+}
+#target {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #b7b3aa;
+  font-size: 13px;
+}
+#text {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid #3b3a36;
+  border-radius: 8px;
+  background: #0e0e0d;
+  color: #e9e5dc;
+  /* 16px keeps iOS from zooming in on focus. */
+  font: inherit;
+  font-size: 16px;
+  resize: none;
+  outline: none;
+}
+@keyframes rise {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+/* A tab on the right edge: tap to comment, drag to move it. */
+#handle {
+  position: fixed;
+  z-index: 9;
+  right: 0;
+  top: 62%;
+  width: 20px;
+  min-height: 0;
+  height: 56px;
+  padding: 0;
+  border: 0;
+  border-radius: 12px 0 0 12px;
+  background: rgba(19, 19, 18, 0.55);
+  box-shadow: inset 2px 0 0 rgba(233, 229, 220, 0.6);
+  touch-action: none;
+}
+
+#status {
+  position: fixed;
+  z-index: 13;
+  left: 50%;
+  top: calc(env(safe-area-inset-top) + 6px);
+  max-width: calc(100% - 32px);
+  transform: translateX(-50%);
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(19, 19, 18, 0.88);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+#setup {
+  position: fixed;
+  z-index: 14;
+  left: 8px;
+  right: 8px;
+  bottom: calc(env(safe-area-inset-bottom) + 8px);
+  padding: 4px 14px 12px;
+  border: 1px solid #3b3a36;
+  border-radius: 12px;
+  background: #1a1a18;
+  font-size: 13px;
+}
+#setup a {
+  color: inherit;
+}
+#setup .row {
+  justify-content: flex-end;
+}

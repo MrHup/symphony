@@ -4,6 +4,8 @@
 // if any, runs where the user is (the machine with the window) and serves things that only make sense
 // there, such as a preview server for a phone on the same network.
 import type { EffortLevel, GhIdentity, MainEvent, Project } from '@shared/types'
+import { mobileUiCore } from '../tools/mobile-ui/core'
+import { mobileUiLocal } from '../tools/mobile-ui/local'
 import type { SessionManager } from './sessions'
 
 /** What a tool's core may use of the core it runs in. */
@@ -49,7 +51,7 @@ export interface ToolModule {
   local?(invoke: (method: string, args: unknown[]) => Promise<unknown>): ToolLocal
 }
 
-export const TOOLS: ToolModule[] = []
+export const TOOLS: ToolModule[] = [{ id: 'mobile-ui', core: mobileUiCore, local: mobileUiLocal }]
 
 /** The cores of every tool, in one Symphony core. */
 export class ToolManager {

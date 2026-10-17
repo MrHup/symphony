@@ -1,0 +1,7 @@
+/* The app's own styles: design tokens first, then components and screens. */
+.placeholder {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  color: #888;
+}

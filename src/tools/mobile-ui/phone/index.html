@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="{{name}}" />
+    <meta name="theme-color" content="#131312" />
+    <title>{{name}}</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="icon-180.png" />
+    <link rel="stylesheet" href="shell.css" />
+  </head>
+  <body>
+    <iframe id="app" title="{{name}}"></iframe>
+
+    <!-- Choosing what a comment is about: taps go to this layer instead of the app. -->
+    <div id="pick" hidden>
+      <div class="bar">
+        <span>Tap what your comment is about</span>
+        <button id="pick-view" type="button">Whole view</button>
+        <button id="pick-cancel" type="button">Cancel</button>
+      </div>
+    </div>
+    <div id="mark" hidden></div>
+
+    <form id="sheet" hidden>
+      <div class="row">
+        <span id="target"></span>
+        <button id="parent" type="button" title="Select what contains it">Wider</button>
+      </div>
+      <textarea id="text" rows="3" placeholder="What should change?" required></textarea>
+      <div class="row">
+        <button id="cancel" type="button">Cancel</button>
+        <button id="send" class="primary" type="submit">Send to Claude</button>
+      </div>
+    </form>
+
+    <button id="handle" type="button" aria-label="Comment"></button>
+    <div id="status" hidden></div>
+
+    <div id="setup" hidden>
+      <p><strong>Full screen</strong>: add this page to your home screen (Share, then Add to Home Screen on iPhone; ⋮, then Install app on Android).</p>
+      <p>To stop the certificate warning, install <a href="symphony-preview.crt" download>this certificate</a> once and trust it (see Symphony's Mobile UI panel).</p>
+      <div class="row">
+        <button id="fullscreen" type="button">Full screen now</button>
+        <button id="setup-close" type="button">Close</button>
+      </div>
+    </div>
+
+    <script src="shell.js"></script>
+  </body>
+</html>

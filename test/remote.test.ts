@@ -73,7 +73,8 @@ function emptySnapshot(): AppSnapshot {
     machines: [],
     machinePosition: { x: -420, y: -200 },
     control: null,
-    notes: []
+    notes: [],
+    tools: {}
   }
 }
 
@@ -368,7 +369,16 @@ describe('routing', () => {
     const before = m.macCore.calls.length
     await m.orch.invoke('refreshUsage', [])
     await m.orch.invoke('dictationLanguage', [])
+    await m.orch.invoke('toolLocal', ['mobile-ui', 'getPreviews', []])
     assert.equal(m.macCore.calls.length, before)
+  })
+
+  test('tool requests go to the chosen machine, and its tool state comes back with its machineId', async () => {
+    await m.orch.invoke('toolCall', ['mobile-ui', 'getRecipe', ['r1'], m.macId.id])
+    assert.deepEqual(m.macCore.calls.at(-1), { method: 'toolCall', args: ['mobile-ui', 'getRecipe', ['r1']] })
+    m.macCore.emit({ type: 'tool', tool: 'mobile-ui', state: { recipes: [] } })
+    await waitFor('tool state on the orchestrator', () => m.pcEvents.some((e) => e.type === 'tool' && e.machineId === m.macId.id))
+    assert.deepEqual(m.orch.snapshot().machines.find((x) => x.id === m.macId.id)?.tools, { 'mobile-ui': { recipes: [] } })
   })
 
   test('targets route by the routing table, and prefixed IDs lose their prefix', async () => {

@@ -12,6 +12,7 @@ import { FolderBrowserPanel, PairingPanel } from './components/MachinePanels'
 import { NeedsYouButton, NeedsYouPanel, useNeedsYouShortcut } from './components/NeedsYou'
 import { RemotePanel } from './components/RemotePanel'
 import { TerminalPanel } from './components/TerminalPanel'
+import { ToolMenu, ToolPanel } from './components/ToolMenu'
 import { UsagePanel } from './components/UsagePanel'
 import { LoopPanel } from './components/LoopPanel'
 import { AgentPanel, SessionPanel } from './components/SessionView'
@@ -83,6 +84,8 @@ function PanelFor({ panel }: { panel: Panel }) {
       return <PairingPanel panel={panel} />
     case 'needs':
       return <NeedsYouPanel panel={panel} />
+    case 'tool':
+      return <ToolPanel panel={panel} />
   }
 }
 
@@ -194,6 +197,7 @@ export function App() {
       ))}
       <ComposerBubble />
       <ColorMenu />
+      <ToolMenu />
       <Lightbox />
       {dragging && <div className="drop-target" />}
     </ReactFlowProvider>

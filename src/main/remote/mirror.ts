@@ -73,6 +73,9 @@ export function applyEvent(s: AppSnapshot, e: MainEvent): boolean {
     case 'loopRemoved':
       s.loops = s.loops.filter((l) => l.id !== e.id)
       return true
+    case 'tool':
+      s.tools = { ...s.tools, [e.tool]: e.state }
+      return true
     default:
       return false
   }
@@ -262,6 +265,7 @@ export class MachineMirror {
       case 'config':
         return { type: 'config', skills: e.skills.map((k) => this.skill(k)), mcp: e.mcp.map((m) => this.mcp(m)), machineId: this.id }
       case 'login':
+      case 'tool':
         return { ...e, machineId: this.id }
       case 'term':
       case 'termExit':

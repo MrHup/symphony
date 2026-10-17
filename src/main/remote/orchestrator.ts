@@ -661,7 +661,8 @@ export class Orchestrator {
       efforts: s?.efforts ?? {},
       autoApprove: !!s?.autoApprove,
       terminals: m.terminals,
-      pairCode: pairing?.code
+      pairCode: pairing?.code,
+      tools: s?.tools ?? {}
     }
   }
 
@@ -684,7 +685,8 @@ export class Orchestrator {
       efforts: {},
       autoApprove: false,
       terminals: false,
-      pairCode: p.code
+      pairCode: p.code,
+      tools: {}
     }
   }
 

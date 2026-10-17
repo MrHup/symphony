@@ -59,7 +59,7 @@ export type Frame =
 export const READ_METHODS = new Set(['snapshot', 'transcript', 'gitStats', 'gitFileDiff', 'gitBranches', 'referenceList', 'readSkill', 'readClaudeMd', 'asset', 'openAsset', 'loopFiles', 'loopOpenFile'])
 
 /** Never routed to a remote machine. */
-export const PC_ONLY = new Set(['refreshUsage', 'micAccess', 'refineDictation', 'dictationLanguage', 'moveNode', 'setMachineColor', 'setOptimizePrompts', 'noteCreate', 'noteUpdate', 'noteDelete'])
+export const PC_ONLY = new Set(['refreshUsage', 'micAccess', 'refineDictation', 'dictationLanguage', 'moveNode', 'setMachineColor', 'setOptimizePrompts', 'noteCreate', 'noteUpdate', 'noteDelete', 'toolLocal'])
 
 /**
  * Requests that name nothing a machine owns take an explicit, optional machineId at this argument
@@ -74,7 +74,8 @@ export const MACHINE_ARG: Record<string, number> = {
   ghLogin: 0,
   setAutoApprove: 1,
   termStart: 4,
-  remoteBrowse: 0
+  remoteBrowse: 0,
+  toolCall: 3
 }
 
 /** Requests with no timeout: they wait on long work or on a person. */

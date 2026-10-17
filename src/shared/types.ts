@@ -418,6 +418,8 @@ export interface AppSnapshot {
   /** Set while another Symphony controls this one: the window is read-only. */
   control: ControlState | null
   notes: Note[]
+  /** Each tool's state on this machine, by tool id (src/main/tools.ts). */
+  tools: Record<string, unknown>
 }
 
 // ---------- remote machines ----------
@@ -458,6 +460,8 @@ export interface MachineState {
   terminals: boolean
   /** While pairing: the 6-digit code to compare. */
   pairCode?: string
+  /** Each tool's state on that machine, by tool id. */
+  tools: Record<string, unknown>
 }
 
 /** On a remote machine: who controls it. grace: the link dropped, read-only until graceEndsAt. */
@@ -546,6 +550,8 @@ export type MainEvent =
   | { type: 'remote'; status: RemoteStatus }
   | { type: 'note'; note: Note }
   | { type: 'noteRemoved'; id: string }
+  /** A tool's state on one machine (this one when machineId is unset). */
+  | { type: 'tool'; tool: string; state: unknown; machineId?: string }
 
 export const USER_HUB_ID = 'hub:user'
 

@@ -102,6 +102,16 @@ export const IconRemote = ({ size = 16 }: { size?: number }) => (
   </svg>
 )
 
+/** Four squares, one set apart: the tools that run on a machine. */
+export const IconTools = ({ size = 14 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 14 14" {...base}>
+    <rect x="1.75" y="1.75" width="4" height="4" rx="0.75" />
+    <rect x="1.75" y="8.25" width="4" height="4" rx="0.75" />
+    <rect x="8.25" y="8.25" width="4" height="4" rx="0.75" />
+    <path d="M10.25 1.75v4M8.25 3.75h4" />
+  </svg>
+)
+
 /** A folder: browse a machine's shared folders. */
 export const IconFolder = ({ size = 14 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 14 14" {...base}>

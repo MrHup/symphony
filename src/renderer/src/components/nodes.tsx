@@ -3,7 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { EFFORT_LABELS, type AgentInfo, type GitStats, type LoopInfo, type MachineState, type McpInfo, type NodeStatus, type Note, type Project, type SessionInfo, type SkillInfo } from '@shared/types'
 import { api, clock, machineConfig, useLock, useStore } from '../store'
 import { Glyph, statusLabel } from './Glyph'
-import { IconAutoApprove, IconBattery, IconDoc, IconFolder, IconLoop, IconTerminal, IconTrash } from './icons'
+import { IconAutoApprove, IconBattery, IconDoc, IconFolder, IconLoop, IconTerminal, IconTools, IconTrash } from './icons'
 import { Markdown } from './Markdown'
 import { uploadReferences, useFileDrop } from '../references'
 
@@ -379,6 +379,24 @@ function NewLoopButton({ name, machineId, lock }: { name: string; machineId?: st
   )
 }
 
+/** The tools that can run on a machine (src/renderer/src/tools.ts). */
+function ToolsButton({ name, machineId, lock }: { name: string; machineId?: string; lock: string | null }) {
+  return (
+    <button
+      className="icon-btn nodrag"
+      disabled={!!lock}
+      title={lock ?? `Tools on ${name}`}
+      onClick={(e) => {
+        e.stopPropagation()
+        const rect = (e.currentTarget.closest('.react-flow__node') ?? e.currentTarget).getBoundingClientRect()
+        useStore.getState().setToolMenu({ machineId: machineId ?? 'local', left: rect.left, right: rect.right, top: rect.top })
+      }}
+    >
+      <IconTools />
+    </button>
+  )
+}
+
 /** The root of one machine's part of the graph. Offline is a broken ring and an outline, never the signal color. */
 export function MachineNode({ data }: NodeProps<MachineNodeType>) {
   const m = data.machine
@@ -393,6 +411,7 @@ export function MachineNode({ data }: NodeProps<MachineNodeType>) {
           <div className="node-actions">
             <AutoApproveToggle on={localAutoApprove} name="this PC" lock={lock} />
             <NewLoopButton name="this PC" lock={lock} />
+            <ToolsButton name="this PC" lock={lock} />
           </div>
         </div>
         <Handles />
@@ -422,6 +441,7 @@ export function MachineNode({ data }: NodeProps<MachineNodeType>) {
           <div className="node-actions">
             <AutoApproveToggle on={m.autoApprove} name={m.name} machineId={m.id} lock={lock} />
             <NewLoopButton name={m.name} machineId={m.id} lock={lock} />
+            <ToolsButton name={m.name} machineId={m.id} lock={lock} />
             <button
               className="icon-btn nodrag"
               disabled={!!lock}

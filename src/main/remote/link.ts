@@ -596,6 +596,10 @@ export class RemoteLink {
         return audit(`loop decision: ${(args[1] as LoopDecision).decision}`, loop(args[0]))
       case 'ghLogin':
         return audit('GitHub sign-in started')
+      case 'toolCall':
+        // Tool methods named get… only read.
+        if (!String(args[1]).startsWith('get')) audit(`tool ${args[0]}: ${args[1]}`)
+        return
     }
   }
 

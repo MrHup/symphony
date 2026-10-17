@@ -21,6 +21,7 @@ import { claudeExecutable, claudeJsonPath, home, samePath, type Adapters } from 
 import { AssetStore } from './assets'
 import { SessionManager } from './sessions'
 import { dataPath, loadState, saveState, type PersistedState } from './store'
+import { ToolManager } from './tools'
 
 const GIT_POLL_MS = 4000
 const CONFIG_POLL_MS = 3 * 60_000
@@ -29,8 +30,8 @@ const RELEASE_DELAY_MS = 2000
 const STARTUP_SWEEP_DELAY_MS = 60_000
 const STARTUP_SWEEP_MIN_AGE_MS = 10 * 60_000
 
-/** The requests the core serves: the window's API without remote orchestration (handled around it). */
-export type CoreApi = Omit<InvokeApi, `remote${string}`>
+/** The requests the core serves: the window's API without remote orchestration and tools' local parts (handled around it). */
+export type CoreApi = Omit<InvokeApi, `remote${string}` | 'toolLocal'>
 export type CoreMethod = keyof CoreApi
 
 export class SymphonyCore {
@@ -38,6 +39,7 @@ export class SymphonyCore {
   readonly sessions: SessionManager
   readonly terminals: TerminalManager
   readonly loops: LoopManager
+  readonly tools: ToolManager
   /** Files shown in sessions (and, on an orchestrator, fetched from remote machines). */
   readonly assets: AssetStore
   readonly handlers: CoreApi
@@ -75,6 +77,16 @@ export class SymphonyCore {
       identityFor: (cwd) => this.identityFor(cwd),
       defaultModel: () => this.state.defaultModel
     })
+    this.tools = new ToolManager({
+      sessions: this.sessions,
+      emit: (e) => this.emit(e),
+      on: (l) => this.on(l),
+      addProject: (path) => this.addProject(path),
+      removeProject: (id) => this.handlers.removeProject(id),
+      projects: () => this.state.projects,
+      identityFor: (cwd) => this.identityFor(cwd),
+      effortFor: (model, effort) => this.effortFor(model, effort)
+    })
     this.handlers = this.createHandlers()
   }
 
@@ -83,6 +95,7 @@ export class SymphonyCore {
     this.state = loadState()
     this.sessions.restore(this.state.sessions)
     this.loops.restore(this.state.loops, this.state.projects)
+    this.tools.start()
     void this.refreshGh()
     void this.gitLoop()
     void this.refreshAllConfig()
@@ -100,6 +113,7 @@ export class SymphonyCore {
     for (const t of this.timers) clearInterval(t)
     clearTimeout(this.releaseTimer)
     this.persist()
+    this.tools.shutdown()
     this.sessions.closeAll()
     this.terminals.killAll()
   }
@@ -161,7 +175,8 @@ export class SymphonyCore {
       machines: [],
       machinePosition: s.machinePosition ?? { x: s.hubPosition.x, y: s.hubPosition.y - 200 },
       control: this.control,
-      notes: s.notes
+      notes: s.notes,
+      tools: this.tools.state()
     }
   }
 
@@ -567,7 +582,8 @@ export class SymphonyCore {
         const file = claudeExecutable()
         if (!file) throw new Error('The Claude Code binary that ships with Symphony was not found. Run npm install again.')
         return terminals.start(id, home, cols, rows, { file, args: ['/login'], name: 'Sign in to Claude' })
-      }
+      },
+      toolCall: (tool, method, args) => this.tools.call(tool, method, args)
     }
   }
 }

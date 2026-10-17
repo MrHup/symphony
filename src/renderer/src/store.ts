@@ -29,7 +29,7 @@ import {
 
 export const api = window.symphony
 
-export type PanelKind = 'session' | 'agent' | 'diff' | 'skill' | 'mcp' | 'claudemd' | 'login' | 'terminal' | 'usage' | 'loop' | 'remote' | 'folders' | 'pairing' | 'needs'
+export type PanelKind = 'session' | 'agent' | 'diff' | 'skill' | 'mcp' | 'claudemd' | 'login' | 'terminal' | 'usage' | 'loop' | 'remote' | 'folders' | 'pairing' | 'needs' | 'tool'
 
 export interface Panel {
   id: string
@@ -79,6 +79,8 @@ interface State {
   machines: Record<string, MachineState>
   machinePosition: Point
   notes: Record<string, Note>
+  /** This machine's tool states, by tool id (a remote machine's are in its MachineState). */
+  tools: Record<string, unknown>
   /** Set while another machine controls this one: the window is read-only. */
   control: ControlState | null
   remote: RemoteStatus | null
@@ -91,6 +93,8 @@ interface State {
   composer: Composer | null
   /** The color picker of a machine node: its id ('local' for this one) and screen rectangle. */
   colorMenu: { machineId: string; left: number; right: number; top: number } | null
+  /** The tool list of a machine node: its id ('local' for this one) and screen rectangle. */
+  toolMenu: { machineId: string; left: number; right: number; top: number } | null
   /** The image viewer: images of one session or loop, and the one shown. */
   lightbox: { ownerId: string; files: AssetRef[]; index: number } | null
   /** Bumped by the dock's Arrange button; the graph then lays itself out again. */
@@ -105,6 +109,7 @@ interface State {
   updatePanel(id: string, patch: Partial<Panel>): void
   setComposer(c: Composer | null): void
   setColorMenu(m: State['colorMenu']): void
+  setToolMenu(m: State['toolMenu']): void
   setMachineColor(machineId: string, color: MachineColor | null): void
   setLightbox(l: State['lightbox']): void
   requestArrange(): void
@@ -143,7 +148,8 @@ const PANEL_SIZES: Record<PanelKind, { w: number; h: number }> = {
   remote: { w: 560, h: 720 },
   folders: { w: 520, h: 560 },
   pairing: { w: 380, h: 300 },
-  needs: { w: 460, h: 420 }
+  needs: { w: 460, h: 420 },
+  tool: { w: 600, h: 780 }
 }
 
 let terminalCount = 0
@@ -203,6 +209,7 @@ export const useStore = create<State>((set, get) => ({
   machines: {},
   machinePosition: { x: -420, y: -200 },
   notes: {},
+  tools: {},
   control: null,
   remote: null,
   waitingSince: {},
@@ -211,6 +218,7 @@ export const useStore = create<State>((set, get) => ({
   panels: [],
   composer: null,
   colorMenu: null,
+  toolMenu: null,
   lightbox: null,
   arrangeRequest: 0,
 
@@ -241,6 +249,7 @@ export const useStore = create<State>((set, get) => ({
       machines: byId(s.machines ?? []),
       machinePosition: s.machinePosition ?? { x: s.hubPosition.x, y: s.hubPosition.y - 200 },
       notes: byId(s.notes ?? []),
+      tools: s.tools ?? {},
       waitingSince
     })
     applyControl(s.control ?? null)
@@ -370,6 +379,8 @@ export const useStore = create<State>((set, get) => ({
               case 'pairing':
               case 'login':
                 return p.targetId !== e.id
+              case 'tool':
+                return p.targetId.split('@')[1] !== e.id
               default:
                 return true
             }
@@ -397,6 +408,13 @@ export const useStore = create<State>((set, get) => ({
         break
       case 'noteRemoved':
         set((s) => ({ notes: omit(s.notes, e.id) }))
+        break
+      case 'tool':
+        set((s) => {
+          if (!e.machineId) return { tools: { ...s.tools, [e.tool]: e.state } }
+          const m = s.machines[e.machineId]
+          return m ? { machines: { ...s.machines, [m.id]: { ...m, tools: { ...m.tools, [e.tool]: e.state } } } } : {}
+        })
         break
     }
   },
@@ -433,11 +451,15 @@ export const useStore = create<State>((set, get) => ({
   },
 
   setComposer(c) {
-    set({ composer: c, colorMenu: null })
+    set({ composer: c, colorMenu: null, toolMenu: null })
   },
 
   setColorMenu(m) {
-    set({ colorMenu: m, composer: null })
+    set({ colorMenu: m, composer: null, toolMenu: null })
+  },
+
+  setToolMenu(m) {
+    set({ toolMenu: m, composer: null, colorMenu: null })
   },
 
   setMachineColor(machineId, color) {
@@ -591,6 +613,11 @@ export function lockReason(s: StoreState, machineId?: string): string | null {
 
 export function useLock(machineId?: string): string | null {
   return useStore((s) => lockReason(s, machineId))
+}
+
+/** A tool's state on a machine (this one when machineId is unset). */
+export function useToolState<T>(tool: string, machineId?: string): T | undefined {
+  return useStore((s) => (machineId ? s.machines[machineId]?.tools?.[tool] : s.tools[tool])) as T | undefined
 }
 
 export const clock = (t: number) => new Date(t).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })

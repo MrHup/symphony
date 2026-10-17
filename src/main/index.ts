@@ -7,6 +7,7 @@ import { SymphonyCore } from './core'
 import { electronAdapters, quitWhenAllWindowsClosed, repairPath, windowChrome } from './platform'
 import { Remote } from './remote'
 import { flushAll, setDataDir } from './store'
+import { LocalTools } from './tools'
 
 const CHARCOAL = '#131312'
 const BONE = '#e9e5dc'
@@ -19,8 +20,14 @@ if (process.env.SYMPHONY_USER_DATA) app.setPath('userData', process.env.SYMPHONY
 let win: BrowserWindow | null = null
 let core: SymphonyCore | null = null
 let remote: Remote | null = null
+let tools: LocalTools | null = null
 
 const toWindow = (e: MainEvent) => win?.webContents.send('symphony:event', e)
+/** What the window gets, the local parts of tools get too. */
+const broadcast = (e: MainEvent) => {
+  toWindow(e)
+  tools?.onEvent(e)
+}
 
 function createWindow(): void {
   win = new BrowserWindow({
@@ -59,13 +66,20 @@ app.whenReady().then(async () => {
   const adapters = electronAdapters(() => win)
   const c = new SymphonyCore(adapters)
   core = c
-  c.on(toWindow)
+  c.on(broadcast)
   c.start()
-  const r = new Remote(c, adapters, toWindow, app.getVersion())
+  const r = new Remote(c, adapters, broadcast, app.getVersion())
   remote = r
+  // Tools' local parts reach every machine the way the window does.
+  const t = new LocalTools((method, args) => r.invoke(method, args))
+  tools = t
   // Every request goes through remote orchestration, which runs it here or routes it to the machine that owns its target.
   for (const name of INVOKE_METHODS) {
-    ipcMain.handle(`symphony:${name}`, (_e, ...args: unknown[]) => r.invoke(name, args))
+    ipcMain.handle(`symphony:${name}`, (_e, ...args: unknown[]) => {
+      if (name !== 'toolLocal') return r.invoke(name, args)
+      if (c.control) return Promise.reject(new Error(`Controlled by ${c.control.by}`))
+      return t.call(args[0] as string, args[1] as string, args[2] as unknown[])
+    })
   }
   // Paired machines are loaded before the window asks for its first snapshot.
   await r.start()
@@ -85,6 +99,7 @@ app.on('before-quit', (e) => {
   quitting = true
   // Give the goodbye frames and pending writes a moment to go out before the process ends.
   e.preventDefault()
+  tools?.shutdown()
   remote?.shutdown()
   core?.shutdown()
   void Promise.all([flushAll(), new Promise((r) => setTimeout(r, 200))]).finally(() => app.quit())

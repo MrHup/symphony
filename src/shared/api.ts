@@ -116,6 +116,10 @@ export interface InvokeApi {
   dictationLanguage(): Promise<string>
   /** A terminal running the bundled Claude Code binary with /login. */
   claudeLogin(id: string, cols: number, rows: number): Promise<string>
+  /** A request to a tool's core on a machine (this one when machineId is missing); see src/main/tools.ts. */
+  toolCall(tool: string, method: string, args: unknown[], machineId?: string): Promise<unknown>
+  /** A request to the part of a tool that runs on this machine, for the person at it. Never routed. */
+  toolLocal(tool: string, method: string, args: unknown[]): Promise<unknown>
 
   // ---------- remote orchestration (never routed) ----------
   remoteStatus(): Promise<RemoteStatus>
@@ -194,6 +198,8 @@ export const INVOKE_METHODS: (keyof InvokeApi)[] = [
   'refineDictation',
   'dictationLanguage',
   'claudeLogin',
+  'toolCall',
+  'toolLocal',
   'remoteStatus',
   'remoteSetOrchestrate',
   'remoteSetRemoteMode',

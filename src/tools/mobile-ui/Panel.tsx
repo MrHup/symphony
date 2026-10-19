@@ -5,7 +5,8 @@ import { FloatingPanel } from '../../renderer/src/components/FloatingPanel'
 import { Glyph, statusLabel } from '../../renderer/src/components/Glyph'
 import { IconTrash } from '../../renderer/src/components/icons'
 import { Markdown } from '../../renderer/src/components/Markdown'
-import { api, clock, machineConfig, rollup, useLock, useStore, useToolState, type Panel } from '../../renderer/src/store'
+import { MachineSelect, useMachineChoices, type MachineChoice } from '../../renderer/src/components/ToolMenu'
+import { api, clock, machineConfig, rollup, useStore, type Panel } from '../../renderer/src/store'
 import guide from './README.md?raw'
 import { TOOL_ID, type MobileUiState, type Preview, type Recipe } from './types'
 import './panel.css'
@@ -13,22 +14,29 @@ import './panel.css'
 const call = <T,>(method: string, args: unknown[], machineId?: string) => api.toolCall(TOOL_ID, method, args, machineId) as Promise<T>
 const local = <T,>(method: string, args: unknown[]) => api.toolLocal(TOOL_ID, method, args) as Promise<T>
 
-/** Mobile UI on one machine: its recipes, a form for a new one, and the phone preview of each. */
-export function MobileUiPanel({ panel, machineId }: { panel: Panel; machineId?: string }) {
-  const state = useToolState<MobileUiState>(TOOL_ID, machineId)
-  const lock = useLock(machineId)
+/** Every machine's recipes, newest first, each with the machine it lives on. */
+function useRecipes(): { recipe: Recipe; machine: MachineChoice }[] {
+  const choices = useMachineChoices()
+  const here = useStore((s) => s.tools[TOOL_ID]) as MobileUiState | undefined
+  const machines = useStore((s) => s.machines)
+  const stateOf = (machineId?: string) => (machineId ? machines[machineId]?.tools?.[TOOL_ID] : here) as MobileUiState | undefined
+  return choices.flatMap((c) => (stateOf(c.machineId)?.recipes ?? []).map((recipe) => ({ recipe, machine: c }))).sort((a, b) => b.recipe.createdAt - a.recipe.createdAt)
+}
+
+/** Mobile UI across every machine: all recipes, a form for a new one on the machine you pick, and the phone preview of each. */
+export function MobileUiPanel({ panel }: { panel: Panel }) {
+  const recipes = useRecipes()
+  const several = useMachineChoices().length > 1
+  const control = useStore((s) => s.control)
   const [adding, setAdding] = useState(false)
   const [reading, setReading] = useState(false)
   const [previews, setPreviews] = useState<Preview[]>([])
   useEffect(() => void local<Preview[]>('getPreviews', []).then(setPreviews, () => undefined), [])
-  const recipes = [...(state?.recipes ?? [])].sort((a, b) => b.createdAt - a.createdAt)
 
   return (
     <FloatingPanel
       panel={panel}
-      machineId={machineId}
       title="Mobile UI"
-      meta={machineId ? undefined : 'This PC'}
       actions={
         <button className="btn ghost small" onClick={() => setReading(!reading)}>
           {reading ? 'Recipes' : 'How it works'}
@@ -40,23 +48,23 @@ export function MobileUiPanel({ panel, machineId }: { panel: Panel; machineId?: 
           <Markdown text={guide} />
         ) : (
           <>
-            <fieldset className="lock" disabled={!!lock} title={lock ?? undefined}>
+            <fieldset className="lock" disabled={!!control} title={control ? `Controlled by ${control.by}` : undefined}>
               {adding || !recipes.length ? (
-                <NewRecipe machineId={machineId} recipes={recipes} onClose={recipes.length ? () => setAdding(false) : undefined} />
+                <NewRecipe recipes={recipes.map((r) => r.recipe)} onClose={recipes.length ? () => setAdding(false) : undefined} />
               ) : (
                 <button className="btn" onClick={() => setAdding(true)}>
                   + New recipe
                 </button>
               )}
             </fieldset>
-            {recipes.map((r) => (
+            {recipes.map(({ recipe: r, machine }) => (
               <RecipeCard
-                key={r.id}
+                key={`${machine.machineId ?? 'local'}/${r.id}`}
                 recipe={r}
-                machineId={machineId}
-                lock={lock}
-                preview={previews.find((p) => p.recipeId === r.id && p.machineId === machineId)}
-                setPreview={(p) => setPreviews((list) => [...list.filter((x) => !(x.recipeId === r.id && x.machineId === machineId)), ...(p ? [p] : [])])}
+                machine={machine}
+                showMachine={several}
+                preview={previews.find((p) => p.recipeId === r.id && p.machineId === machine.machineId)}
+                setPreview={(p) => setPreviews((list) => [...list.filter((x) => !(x.recipeId === r.id && x.machineId === machine.machineId)), ...(p ? [p] : [])])}
               />
             ))}
           </>
@@ -66,7 +74,9 @@ export function MobileUiPanel({ panel, machineId }: { panel: Panel; machineId?: 
   )
 }
 
-function NewRecipe({ machineId, recipes, onClose }: { machineId?: string; recipes: Recipe[]; onClose?: () => void }) {
+function NewRecipe({ recipes, onClose }: { recipes: Recipe[]; onClose?: () => void }) {
+  const [machineId, setMachineId] = useState<string | undefined>(undefined)
+  const machine = useMachineChoices().find((c) => c.machineId === machineId)
   const all = useStore((s) => s.projects)
   const projects = Object.values(all).filter((p) => p.machineId === machineId && !recipes.some((r) => r.projectId === p.id))
   const config = machineConfig(useStore.getState(), machineId)
@@ -77,8 +87,20 @@ function NewRecipe({ machineId, recipes, onClose }: { machineId?: string; recipe
   const [effort, setEffort] = useState<EffortLevel | ''>(config.efforts[config.defaultModel] ?? '')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // The picked machine can be unpaired while the form is open.
+  const lock = machine ? machine.lock : 'That machine is no longer paired'
+
+  // Models, efforts and projects are each machine's own, so picking another machine starts them over.
+  const pickMachine = (id?: string) => {
+    const next = machineConfig(useStore.getState(), id)
+    setMachineId(id)
+    setSource('')
+    setModel(next.defaultModel)
+    setEffort(next.efforts[next.defaultModel] ?? '')
+  }
 
   const create = async () => {
+    if (lock) return
     setBusy(true)
     setError(null)
     try {
@@ -103,6 +125,7 @@ function NewRecipe({ machineId, recipes, onClose }: { machineId?: string; recipe
         onKeyDown={(e) => e.key === 'Enter' && (e.ctrlKey || e.metaKey) && prompt.trim() && void create()}
       />
       <div className="step-opts">
+        <MachineSelect value={machineId} onChange={pickMachine} />
         <select className="model mui-source" value={source} onChange={(e) => setSource(e.target.value)} title="An existing app to build the recipe from">
           <option value="">From the prompt only</option>
           {projects.map((p) => (
@@ -111,24 +134,32 @@ function NewRecipe({ machineId, recipes, onClose }: { machineId?: string; recipe
             </option>
           ))}
         </select>
-        {!machineId && (
+        {machineId ? (
+          <button className="btn" disabled={!!lock} title="Add a project from the folders that machine shares" onClick={() => useStore.getState().openPanel('folders', machineId)}>
+            Add a folder…
+          </button>
+        ) : (
           <button className="btn" title="Add a folder as a project and build from it" onClick={() => void api.addProject().then((p) => p && setSource(p.id))}>
             Add a folder…
           </button>
         )}
+      </div>
+      <div className="step-opts">
         <span className="spacer" />
         <ModelSelect machineId={machineId} value={model} onChange={(m) => (setModel(m), setEffort(config.efforts[m] ?? ''))} />
         <EffortSelect machineId={machineId} model={model} value={effort} onChange={setEffort} />
       </div>
       {error && <p className="loop-error">{error}</p>}
       <div className="loop-foot">
-        <span className="hint">Claude builds the app and its documentation in a session on {machineId ? 'that machine' : 'this PC'}; the source folder is only read.</span>
+        <span className="hint">
+          {lock && machineId ? lock : `Claude builds the app and its documentation in a session on ${machine?.name ?? 'that machine'}; the source folder is only read.`}
+        </span>
         {onClose && (
           <button className="btn ghost" onClick={onClose}>
             Cancel
           </button>
         )}
-        <button className="btn primary" disabled={busy || !prompt.trim()} onClick={() => void create()}>
+        <button className="btn primary" disabled={busy || !prompt.trim() || !!lock} onClick={() => void create()}>
           Create recipe
         </button>
       </div>
@@ -136,7 +167,20 @@ function NewRecipe({ machineId, recipes, onClose }: { machineId?: string; recipe
   )
 }
 
-function RecipeCard({ recipe: r, machineId, lock, preview, setPreview }: { recipe: Recipe; machineId?: string; lock: string | null; preview?: Preview; setPreview: (p: Preview | null) => void }) {
+function RecipeCard({
+  recipe: r,
+  machine,
+  showMachine,
+  preview,
+  setPreview
+}: {
+  recipe: Recipe
+  machine: MachineChoice
+  showMachine: boolean
+  preview?: Preview
+  setPreview: (p: Preview | null) => void
+}) {
+  const { machineId, lock } = machine
   const [doc, setDoc] = useState<string | null | undefined>(undefined)
   const [showDoc, setShowDoc] = useState(false)
   const [confirm, setConfirm] = useState(false)
@@ -154,7 +198,10 @@ function RecipeCard({ recipe: r, machineId, lock, preview, setPreview }: { recip
       <div className="step-head">
         <Glyph status={status} size={12} />
         <span className="loop-card-text mui-name">{r.name}</span>
-        <span className="history-meta">{clock(r.createdAt)}</span>
+        <span className="history-meta">
+          {showMachine && `${machine.name}${machine.offline ? ' (offline)' : ''} · `}
+          {clock(r.createdAt)}
+        </span>
         <fieldset className="lock mui-actions" disabled={!!lock} title={lock ?? undefined}>
           {preview ? (
             <button className="btn" onClick={() => run(local('stop', [machineId ?? null, r.id]).then(() => setPreview(null)))}>

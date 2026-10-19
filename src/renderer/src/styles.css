@@ -455,7 +455,7 @@ button.identity:hover {
 
 .empty-hint {
   position: fixed;
-  left: 270px;
+  left: 290px;
   bottom: 30px;
   color: var(--grey-2);
   text-align: center;
@@ -2634,7 +2634,7 @@ div.artifact .artifact-label {
 
 /* ---------- tools ---------- */
 
-/* The tools a machine offers, from the tools button on its node. */
+/* The tools, from the tools button in the dock. */
 .tool-menu {
   width: 300px;
   display: flex;

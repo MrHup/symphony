@@ -93,8 +93,8 @@ interface State {
   composer: Composer | null
   /** The color picker of a machine node: its id ('local' for this one) and screen rectangle. */
   colorMenu: { machineId: string; left: number; right: number; top: number } | null
-  /** The tool list of a machine node: its id ('local' for this one) and screen rectangle. */
-  toolMenu: { machineId: string; left: number; right: number; top: number } | null
+  /** The tool list of the dock's tools button: the button's screen rectangle. */
+  toolMenu: { left: number; right: number; top: number } | null
   /** The image viewer: images of one session or loop, and the one shown. */
   lightbox: { ownerId: string; files: AssetRef[]; index: number } | null
   /** Bumped by the dock's Arrange button; the graph then lays itself out again. */
@@ -379,8 +379,6 @@ export const useStore = create<State>((set, get) => ({
               case 'pairing':
               case 'login':
                 return p.targetId !== e.id
-              case 'tool':
-                return p.targetId.split('@')[1] !== e.id
               default:
                 return true
             }

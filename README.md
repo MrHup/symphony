@@ -50,14 +50,14 @@ on one machine can be tested without touching the network or the firewall.
 
 | To | Do this |
 |---|---|
-| Add a project | Click **+** (bottom left) and pick a folder, or drop a folder onto the window |
-| Open a terminal | The terminal button on a project opens PowerShell in that folder; the one in the bottom-left dock opens it in your home folder. Each click opens another floating terminal; closing one ends its shell |
+| Add a project | The folder button on the This PC node lets you pick a folder (on a remote machine's node, one of the folders it shares), or drop a folder onto the window |
+| Open a terminal | The terminal button on a project opens PowerShell in that folder; the one on a machine node (This PC, or a remote machine that allows terminals) opens it in that machine's home folder. Each click opens another floating terminal; closing one ends its shell |
 | Minimize a window | The − in its header. It waits as a chip next to the dock (click to restore); a minimized terminal or session keeps running |
 | Check Claude usage | The meter in the bottom-left dock shows the 5-hour, weekly and weekly-per-model (Fable) windows as bars; click it for exact percentages and reset times |
 | Start work | Right-click a project, type a prompt, pick a model and its effort, **Start** (Ctrl/⌘+Enter) |
 | Set effort | The picker next to the model lists only the levels that model accepts (low, medium, high, extra-high, max) and is hidden for models without effort, such as Haiku. Each model remembers its own effort; "Default effort" leaves it to Claude Code |
 | Build a loop | The loop button on a machine node (This PC, or a remote machine) opens the loop editor for a loop on that machine (see Loops below) |
-| Use a tool | The tools button on a machine node lists the tools; pick one to open its panel for that machine (see Tools below) |
+| Use a tool | The tools button in the dock lists the tools; pick one to open its panel. The panel covers every machine, and when you run something you pick the machine it runs on (see Tools below) |
 | Approve automatically | The double-check button on a machine node (This PC, or a remote machine). While it is on (bone white, and for this PC "auto-approving" next to the Symphony mark), Claude Code permission prompts on that machine are allowed without asking, and any waiting ones are released. It is off every time Symphony starts |
 | Dictate a prompt | The mic button in the prompt bubble, a session's reply box or a loop step. Click, speak (the words appear dimmed as you speak), click again; the text is cleaned up and inserted where the cursor was. Escape cancels while listening |
 | Attach images | Paste them (Ctrl/⌘+V) into the right-click prompt bubble or a session's reply box. Thumbnails appear above the text; hover one to remove it. A reply can be just images |
@@ -155,10 +155,11 @@ button on a machine node; its node sits above that machine on the graph.
 ## Tools
 
 A tool is a module of this repo with its own logic, skills, agent tools and panel, for getting one
-kind of work done. Pick it from the tools button on a machine node: it runs on that machine (this
-PC, or a remote machine), and so do its sessions, which appear on the graph like any other. Each tool
-documents what it does, what it needs (API keys, browsers, SDKs that Symphony itself does not) and
-how to use it:
+kind of work done. Tools belong to Symphony, not to a machine: pick one from the tools button in the
+dock, and its panel shows what it has on every machine. Each time you run it, you pick the machine it
+runs on (this PC, or a remote machine); that run's files and sessions live there, and its sessions
+appear on the graph like any other. Each tool documents what it does, what it needs (API keys,
+browsers, SDKs that Symphony itself does not) and how to use it:
 
 | Tool | What it does |
 |---|---|
@@ -168,7 +169,8 @@ How tools fit in:
 
 - **One folder each.** `src/tools/<id>/` holds the tool's code, its `README.md`, and whatever it
   copies or serves (skills, templates, pages). It is registered once for the main process
-  (`src/main/tools.ts`) and once for the window (`src/renderer/src/tools.ts`).
+  (`src/main/tools.ts`) and once for the window (`src/renderer/src/tools.ts`). Its panel uses
+  `MachineSelect` (`components/ToolMenu.tsx`) to let you pick the machine a run goes to.
 - **Two parts.** The tool's **core** runs inside the core of the machine it is used on and keeps its
   state there; the window reaches it with one request, `toolCall(tool, method, args, machineId)`,
   which goes over the link like every other request, so a tool works on remote machines without
@@ -223,8 +225,8 @@ On the orchestrator each remote machine is its own root on the graph, with its `
 projects under it; remote projects carry the machine's name. Everything works as for local
 projects: the prompt pipeline with live thinking and tool calls, approvals and questions, replies,
 loops (including human steps; files in their folders are fetched and opened here), the diff
-viewer, CLAUDE.md, skills, MCP, and terminals if the remote machine allows them. The machine node
-carries that machine's auto-approve toggle, a button for a new loop on it, the folder browser for adding a
+viewer, CLAUDE.md, skills, MCP, and terminals if the remote machine allows them. Its machine node,
+like This PC's, carries that machine's auto-approve toggle, a button for a new loop on it, the folder browser for adding a
 project from its shared folders, a terminal button, and its battery when it runs on battery. The
 usage meter is this machine's only; remote machines stop polling usage while linked. A repo cloned on two machines is two separate projects.
 
@@ -434,7 +436,7 @@ with your own environment, so a `claude` you run there yourself is not covered.
 | `src/renderer/src/components/UsagePanel.tsx` | Usage bars and reset times |
 | `src/renderer/src/components/LoopPanel.tsx` | Loop editor (the graph of steps and folders), running view, human review card, history |
 | `src/main/tools.ts` | The tool registry for the main process: each tool's core in the core (`ToolManager`), its local part on the window's machine (`LocalTools`) |
-| `src/renderer/src/tools.ts`, `components/ToolMenu.tsx` | The tool registry for the window, a machine node's tools menu, the tool panel |
+| `src/renderer/src/tools.ts`, `components/ToolMenu.tsx` | The tool registry for the window, the dock's tools menu, the tool panel, the machine picker tools use |
 | `src/tools/<id>/` | One tool each, with its own README: [Mobile UI](src/tools/mobile-ui/README.md) |
 | `src/renderer/src/speech/` | Dictation: microphone capture, the local Whisper worker, live preview |
 | `src/main/dictation.ts` | Clean-up of dictated text with Claude Haiku |

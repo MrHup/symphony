@@ -7,7 +7,7 @@ import { ControlBanner } from './components/ControlBanner'
 import { Lightbox } from './components/Files'
 import { FloatingPanel, PanelTray } from './components/FloatingPanel'
 import { Graph } from './components/Graph'
-import { IconArrange, IconMeter, IconPlus, IconRemote, IconTerminal } from './components/icons'
+import { IconArrange, IconMeter, IconRemote, IconTools } from './components/icons'
 import { FolderBrowserPanel, PairingPanel } from './components/MachinePanels'
 import { NeedsYouButton, NeedsYouPanel, useNeedsYouShortcut } from './components/NeedsYou'
 import { RemotePanel } from './components/RemotePanel'
@@ -111,6 +111,22 @@ function AppMark() {
   )
 }
 
+/** The tools (src/renderer/src/tools.ts). They belong to Symphony, not to a machine: each run picks one. */
+function ToolsButton() {
+  return (
+    <button
+      className="dock-btn"
+      title="Tools"
+      onClick={(e) => {
+        const rect = e.currentTarget.getBoundingClientRect()
+        useStore.getState().setToolMenu({ left: rect.left, right: rect.right, top: rect.top })
+      }}
+    >
+      <IconTools size={16} />
+    </button>
+  )
+}
+
 /** Remote machines: orchestrate others, or let one orchestrate this machine. */
 function RemoteButton() {
   const linked = useStore((s) => Object.keys(s.machines).length > 0 || !!s.control)
@@ -173,20 +189,15 @@ export function App() {
       {ready && <Graph />}
       {ready && !hasProjects && (
         <div className="empty-hint">
-          <strong>Add a project folder</strong>, or drop one anywhere. Right-click a project to start a session.
+          <strong>Add a project folder</strong> with the folder button on This PC, or drop one anywhere. Right-click a project to start a session.
         </div>
       )}
       <ControlBanner />
       <div className="dock">
-        <button className="dock-btn" title="Add a project folder" disabled={!!control} onClick={() => void api.addProject()}>
-          <IconPlus />
-        </button>
-        <button className="dock-btn" title="Terminal in your home folder" disabled={!!control} onClick={() => useStore.getState().openTerminal(null)}>
-          <IconTerminal size={16} />
-        </button>
         <button className="dock-btn" title="Arrange the graph so nothing overlaps" disabled={!!control} onClick={() => useStore.getState().requestArrange()}>
           <IconArrange />
         </button>
+        <ToolsButton />
         <UsageButton />
         <RemoteButton />
         <NeedsYouButton />

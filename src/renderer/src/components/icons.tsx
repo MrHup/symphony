@@ -102,7 +102,7 @@ export const IconRemote = ({ size = 16 }: { size?: number }) => (
   </svg>
 )
 
-/** Four squares, one set apart: the tools that run on a machine. */
+/** Four squares, one set apart: the tools. */
 export const IconTools = ({ size = 14 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 14 14" {...base}>
     <rect x="1.75" y="1.75" width="4" height="4" rx="0.75" />

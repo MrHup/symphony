@@ -3,7 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { EFFORT_LABELS, type AgentInfo, type GitStats, type LoopInfo, type MachineState, type McpInfo, type NodeStatus, type Note, type Project, type SessionInfo, type SkillInfo } from '@shared/types'
 import { api, clock, machineConfig, useLock, useStore } from '../store'
 import { Glyph, statusLabel } from './Glyph'
-import { IconAutoApprove, IconBattery, IconDoc, IconFolder, IconLoop, IconTerminal, IconTools, IconTrash } from './icons'
+import { IconAutoApprove, IconBattery, IconDoc, IconFolder, IconLoop, IconTerminal, IconTrash } from './icons'
 import { Markdown } from './Markdown'
 import { uploadReferences, useFileDrop } from '../references'
 
@@ -379,20 +379,37 @@ function NewLoopButton({ name, machineId, lock }: { name: string; machineId?: st
   )
 }
 
-/** The tools that can run on a machine (src/renderer/src/tools.ts). */
-function ToolsButton({ name, machineId, lock }: { name: string; machineId?: string; lock: string | null }) {
+/** Add a project on a machine: this PC's folder picker, or a remote machine's shared folders. */
+function AddFolderButton({ name, machineId, lock }: { name: string; machineId?: string; lock: string | null }) {
   return (
     <button
       className="icon-btn nodrag"
       disabled={!!lock}
-      title={lock ?? `Tools on ${name}`}
+      title={lock ?? (machineId ? `Add a project from the folders ${name} shares` : `Add a project folder on ${name}`)}
       onClick={(e) => {
         e.stopPropagation()
-        const rect = (e.currentTarget.closest('.react-flow__node') ?? e.currentTarget).getBoundingClientRect()
-        useStore.getState().setToolMenu({ machineId: machineId ?? 'local', left: rect.left, right: rect.right, top: rect.top })
+        if (machineId) useStore.getState().openPanel('folders', machineId)
+        else void api.addProject()
       }}
     >
-      <IconTools />
+      <IconFolder />
+    </button>
+  )
+}
+
+/** A terminal in a machine's home folder; each click opens another. */
+function HomeTerminalButton({ name, machineId, lock }: { name: string; machineId?: string; lock: string | null }) {
+  return (
+    <button
+      className="icon-btn nodrag"
+      disabled={!!lock}
+      title={lock ?? `Terminal in the home folder of ${name}`}
+      onClick={(e) => {
+        e.stopPropagation()
+        useStore.getState().openTerminal(null, machineId)
+      }}
+    >
+      <IconTerminal />
     </button>
   )
 }
@@ -411,7 +428,8 @@ export function MachineNode({ data }: NodeProps<MachineNodeType>) {
           <div className="node-actions">
             <AutoApproveToggle on={localAutoApprove} name="this PC" lock={lock} />
             <NewLoopButton name="this PC" lock={lock} />
-            <ToolsButton name="this PC" lock={lock} />
+            <AddFolderButton name="this PC" lock={lock} />
+            <HomeTerminalButton name="this PC" lock={lock} />
           </div>
         </div>
         <Handles />
@@ -441,31 +459,8 @@ export function MachineNode({ data }: NodeProps<MachineNodeType>) {
           <div className="node-actions">
             <AutoApproveToggle on={m.autoApprove} name={m.name} machineId={m.id} lock={lock} />
             <NewLoopButton name={m.name} machineId={m.id} lock={lock} />
-            <ToolsButton name={m.name} machineId={m.id} lock={lock} />
-            <button
-              className="icon-btn nodrag"
-              disabled={!!lock}
-              title={`Add a project from the folders ${m.name} shares`}
-              onClick={(e) => {
-                e.stopPropagation()
-                useStore.getState().openPanel('folders', m.id)
-              }}
-            >
-              <IconFolder />
-            </button>
-            {m.terminals && (
-              <button
-                className="icon-btn nodrag"
-                disabled={!!lock}
-                title={`Terminal in the home folder of ${m.name}`}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  useStore.getState().openTerminal(null, m.id)
-                }}
-              >
-                <IconTerminal />
-              </button>
-            )}
+            <AddFolderButton name={m.name} machineId={m.id} lock={lock} />
+            {m.terminals && <HomeTerminalButton name={m.name} machineId={m.id} lock={lock} />}
           </div>
         )}
       </div>

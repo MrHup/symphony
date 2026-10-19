@@ -35,11 +35,12 @@ home screen.
 
 ## Use
 
-1. Click the tools button on a machine node (This PC, or a remote machine) and pick **Mobile UI**. The
-   recipe, its files and its sessions live on that machine.
-2. Describe the app, optionally pick a project to build from (on this PC, **Add a folder…** adds one),
-   pick a model, and **Create recipe**. A session builds the app and its docs; it appears on the graph
-   under the recipe's project, like any other session.
+1. Click the tools button in the dock and pick **Mobile UI**. The panel lists the recipes of every
+   machine, each with the machine it lives on.
+2. Describe the app and pick the machine it runs on (This PC, or a remote machine): the recipe, its
+   files and its sessions live there. Optionally pick a project on that machine to build from
+   (**Add a folder…** adds one), pick a model, and **Create recipe**. A session builds the app and its
+   docs; it appears on the graph under the recipe's project, like any other session.
 3. **Preview on phone** shows a QR code and the link. Scan it.
 4. On the phone, tap the tab on the right edge (drag it to move it), then tap what your comment is about:
    a component, **Wider** for what contains it, or **Whole view** (drag the bar at the top by its

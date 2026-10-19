@@ -453,6 +453,8 @@ export class Orchestrator {
     const idx = MACHINE_ARG[method]
     const plain = idx === undefined ? args : args.slice(0, idx)
     if (!owner) return this.core.invokeLocal(method, plain)
+    // It would open on that machine's screen, where nobody is looking.
+    if (method === 'openProjectFolder') throw new Error('Only folders on this machine can be opened here.')
     const m = this.need(owner)
     const forwarded = plain.map((a) => (typeof a === 'string' ? (splitMachine(a)?.machineId === owner ? splitMachine(a)!.id : a) : a))
     if (method === 'loopOpenFile') return this.openRemoteFile(m, forwarded)

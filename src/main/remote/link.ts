@@ -516,7 +516,7 @@ export class RemoteLink {
 
   private async execute(method: string, args: unknown[]): Promise<unknown> {
     // asset/openAsset are served by the orchestrator from its own copy, fetched with fetchAsset.
-    if (PC_ONLY.has(method) || method.startsWith('remote') || method === 'claudeLogin' || method === 'asset' || method === 'openAsset' || method === 'loopOpenFile') throw new Error(`${method} is not available remotely`)
+    if (PC_ONLY.has(method) || method.startsWith('remote') || method === 'claudeLogin' || method === 'asset' || method === 'openAsset' || method === 'loopOpenFile' || method === 'openProjectFolder') throw new Error(`${method} is not available remotely`)
     if (LINK_METHODS.has(method)) {
       if (method === 'listFolders') return this.listFolders(args[0] as string | undefined)
       if (method === 'fetchAsset') return this.fetchAsset(String(args[0]))

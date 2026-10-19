@@ -527,6 +527,11 @@ export class SymphonyCore {
         return { path: skill.path, content: await readFile(skill.path, 'utf8') }
       },
       readClaudeMd: (projectId) => readClaudeMd(project(projectId).path),
+      // A folder opens in the file manager (Explorer, Finder) rather than in an app.
+      openProjectFolder: async (projectId) => {
+        const { path } = project(projectId)
+        return existsSync(path) ? this.adapters.openPath(path) : 'The folder no longer exists.'
+      },
       writeClaudeMd: (projectId, content) => writeClaudeMd(project(projectId).path, content),
       refreshConfig: () => this.refreshAllConfig(),
       ghLogin: async () => {

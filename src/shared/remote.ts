@@ -56,7 +56,7 @@ export type Frame =
 // ---------- which request goes where ----------
 
 /** Allowed from a controlled machine's own window: they only read. */
-export const READ_METHODS = new Set(['snapshot', 'transcript', 'gitStats', 'gitFileDiff', 'gitBranches', 'referenceList', 'readSkill', 'readClaudeMd', 'asset', 'openAsset', 'loopFiles', 'loopOpenFile'])
+export const READ_METHODS = new Set(['snapshot', 'transcript', 'gitStats', 'gitFileDiff', 'gitBranches', 'referenceList', 'readSkill', 'readClaudeMd', 'openProjectFolder', 'asset', 'openAsset', 'loopFiles', 'loopOpenFile'])
 
 /** Never routed to a remote machine. */
 export const PC_ONLY = new Set(['refreshUsage', 'micAccess', 'refineDictation', 'dictationLanguage', 'moveNode', 'setMachineColor', 'setOptimizePrompts', 'noteCreate', 'noteUpdate', 'noteDelete', 'toolLocal'])

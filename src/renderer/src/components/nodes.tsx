@@ -2,8 +2,9 @@ import { Handle, Position, type Node, type NodeProps } from '@xyflow/react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { EFFORT_LABELS, type AgentInfo, type GitStats, type LoopInfo, type MachineState, type McpInfo, type NodeStatus, type Note, type Project, type SessionInfo, type SkillInfo } from '@shared/types'
 import { api, clock, machineConfig, useLock, useStore } from '../store'
+import { cleanError } from './Composer'
 import { Glyph, statusLabel } from './Glyph'
-import { IconAutoApprove, IconBattery, IconDoc, IconFolder, IconLoop, IconTerminal, IconTrash } from './icons'
+import { IconAutoApprove, IconBattery, IconDoc, IconFolder, IconLoop, IconOpenFolder, IconTerminal, IconTrash } from './icons'
 import { Markdown } from './Markdown'
 import { uploadReferences, useFileDrop } from '../references'
 
@@ -37,6 +38,9 @@ export function useModelLabel(value: string, machineId?: string): string {
 
 export type ProjectNodeType = Node<{ project: Project; status: NodeStatus; stats?: GitStats; busy: boolean; offline?: boolean; machine?: MachineState }, 'project'>
 
+/** The open-folder button's label, in the words of this machine's OS. */
+const FILE_MANAGER = api.platform === 'win32' ? 'Open in File Explorer' : api.platform === 'darwin' ? 'Open in Finder' : 'Open in the file manager'
+
 /** How long the note after dropping files stays on a project. */
 const DROP_NOTE_MS = 4000
 
@@ -51,6 +55,11 @@ export function ProjectNode({ data }: NodeProps<ProjectNodeType>) {
   const [dropNote, setDropNote] = useState<string | null>(null)
   const noteTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   useEffect(() => () => clearTimeout(noteTimer.current), [])
+  const showNote = (note: string) => {
+    clearTimeout(noteTimer.current)
+    setDropNote(note)
+    noteTimer.current = setTimeout(() => setDropNote(null), DROP_NOTE_MS * 2)
+  }
   const drop = useFileDrop(!lock, (files) => {
     clearTimeout(noteTimer.current)
     setDropNote(`adding ${files.length === 1 ? files[0].name : `${files.length} files`}…`)
@@ -99,6 +108,18 @@ export function ProjectNode({ data }: NodeProps<ProjectNodeType>) {
           >
             <IconDoc />
           </button>
+          {!project.machineId && (
+            <button
+              className="icon-btn nodrag"
+              title={FILE_MANAGER}
+              onClick={(e) => {
+                e.stopPropagation()
+                void api.openProjectFolder(project.id).then((err) => err && showNote(err), (err) => showNote(cleanError(err)))
+              }}
+            >
+              <IconOpenFolder />
+            </button>
+          )}
           {terminals && (
             <button
               className="icon-btn nodrag"

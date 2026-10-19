@@ -119,6 +119,14 @@ export const IconFolder = ({ size = 14 }: { size?: number }) => (
   </svg>
 )
 
+/** A folder with an arrow out of it: open the folder in the file manager. */
+export const IconOpenFolder = ({ size = 14 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 14 14" {...base}>
+    <path d="M6.25 10.75H1.75v-7h3.5l1.25 1.25h5.75v2" />
+    <path d="M8.75 12.25l3.5-3.5M9.75 8.75h2.5v2.5" />
+  </svg>
+)
+
 /** A battery filled to `level` (0–1). */
 export const IconBattery = ({ level, size = 14 }: { level: number; size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 14 14" {...base}>

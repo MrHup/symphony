@@ -68,6 +68,7 @@ on one machine can be tested without touching the network or the firewall.
 | See uncommitted changes | Click the branch and `+n −n` counts on a project |
 | Stage, switch branch or commit | In that changes view, files are listed under **Staged** and **Changes**; the + and − on a file (or on a heading, for all of them) stage and unstage it. Pick a branch in the header, or write a message and **Commit** (Ctrl/⌘+Enter) to commit what is staged |
 | Edit CLAUDE.md | Click the page icon on a project. Save with Ctrl/⌘+S |
+| Open a project's folder | The open-folder button on a project on this PC opens it in File Explorer (Finder on macOS). Remote projects don't have it: the folder would open on that machine's screen |
 | Read a skill | Click it (Source or Rendered) |
 | Inspect an MCP server | Click it. Secret values are hidden |
 | Change a skill or MCP server | Right-click it, describe the change, **Start** |

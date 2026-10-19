@@ -70,6 +70,8 @@ export interface InvokeApi {
   referenceDelete(projectId: string, name: string): Promise<void>
   readSkill(skillId: string): Promise<{ path: string; content: string }>
   readClaudeMd(projectId: string): Promise<{ path: string; content: string; exists: boolean }>
+  /** Opens a project's folder in this machine's file manager (Explorer, Finder). This machine's projects only. Returns an error or null. */
+  openProjectFolder(projectId: string): Promise<string | null>
   writeClaudeMd(projectId: string, content: string): Promise<string>
   /** Every connected machine without a machineId ('local' for this one only). */
   refreshConfig(machineId?: string): Promise<void>
@@ -172,6 +174,7 @@ export const INVOKE_METHODS: (keyof InvokeApi)[] = [
   'referenceDelete',
   'readSkill',
   'readClaudeMd',
+  'openProjectFolder',
   'writeClaudeMd',
   'refreshConfig',
   'ghLogin',

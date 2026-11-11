@@ -244,7 +244,7 @@ export interface ModelOption {
 }
 
 /** Models offered even when Claude Code does not report them yet, listed after the model named `after`. */
-const EXTRA_MODELS: (ModelOption & { after: string })[] = [{ value: 'fable-5.2', label: 'Fable 5.2', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], after: 'fable' }]
+const EXTRA_MODELS: (ModelOption & { after: string })[] = [{ value: 'claude-fable-5-2', label: 'Fable 5.2', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], after: 'fable' }]
 
 /** `models` plus the extra models it lacks, each after its `after` model (taking its effort levels) or at the end. */
 export function withExtraModels(models: ModelOption[]): ModelOption[] {

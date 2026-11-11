@@ -8,7 +8,7 @@ import { basename, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { InvokeApi } from '@shared/api'
 import { READ_METHODS } from '@shared/remote'
-import { USER_HUB_ID, type AppSnapshot, type ControlState, type EffortLevel, type ImageInput, type UsageInfo, type GhAccounts, type GitStats, type McpInfo, type MainEvent, type ModelOption, type Note, type Point, type Project, type SkillInfo } from '@shared/types'
+import { USER_HUB_ID, withExtraModels, type AppSnapshot, type ControlState, type EffortLevel, type ImageInput, type UsageInfo, type GhAccounts, type GitStats, type McpInfo, type MainEvent, type ModelOption, type Note, type Point, type Project, type SkillInfo } from '@shared/types'
 import { dictationLanguage, inspect, isProjectScoped, projectSkills, readClaudeMd, readUsage, toMcpInfo, userSkills, writeClaudeMd } from './claudeConfig'
 import { TerminalManager } from './terminals'
 import { LoopManager } from './loops'
@@ -281,11 +281,13 @@ export class SymphonyCore {
         .map(({ s, name }) => ({ ...s, name: name! }))
       this.hubMcp = result.mcp.filter((s) => !isProjectScoped(s)).map((s) => toMcpInfo(s))
       if (result.models.length) {
-        this.models = result.models.map((m) => ({
-          value: m.value,
-          label: m.displayName,
-          efforts: m.supportsEffort ? ((m.supportedEffortLevels ?? []) as EffortLevel[]) : []
-        }))
+        this.models = withExtraModels(
+          result.models.map((m) => ({
+            value: m.value,
+            label: m.displayName,
+            efforts: m.supportsEffort ? ((m.supportedEffortLevels ?? []) as EffortLevel[]) : []
+          }))
+        )
         this.emit({ type: 'models', models: this.models })
       }
     } catch (err) {

@@ -229,6 +229,21 @@ export interface ModelOption {
   efforts: EffortLevel[]
 }
 
+/** Models offered even when Claude Code does not report them yet, listed after the model named `after`. */
+const EXTRA_MODELS: (ModelOption & { after: string })[] = [{ value: 'fable-5.2', label: 'Fable 5.2', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], after: 'fable' }]
+
+/** `models` plus the extra models it lacks, each after its `after` model (taking its effort levels) or at the end. */
+export function withExtraModels(models: ModelOption[]): ModelOption[] {
+  const list = [...models]
+  for (const { after, ...x } of EXTRA_MODELS) {
+    if (list.some((m) => m.value === x.value)) continue
+    const i = list.findIndex((m) => m.value === after)
+    if (i < 0) list.push(x)
+    else list.splice(i + 1, 0, { ...x, efforts: list[i].efforts })
+  }
+  return list
+}
+
 export interface GhAccounts {
   installed: boolean
   hosts: Record<string, { login: string; active: boolean; state: string }[]>

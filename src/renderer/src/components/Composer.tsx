@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { EFFORT_LABELS, type EffortLevel, type ModelOption } from '@shared/types'
+import { EFFORT_LABELS, withExtraModels, type EffortLevel, type ModelOption } from '@shared/types'
 import { usePastedImages } from '../images'
 import { api, machineConfig, useStore } from '../store'
 import { Attachments } from './Attachments'
@@ -13,13 +13,15 @@ const ALL_EFFORTS: EffortLevel[] = ['low', 'medium', 'high', 'xhigh', 'max']
 /** The models Claude Code reports, or the CLI aliases until that list arrives. */
 function useModels(machineId?: string): ModelOption[] {
   const models = useStore((s) => machineConfig(s, machineId).models)
-  return models.length
-    ? models
-    : [
-        { value: 'opus', label: 'Opus', efforts: ALL_EFFORTS },
-        { value: 'sonnet', label: 'Sonnet', efforts: ALL_EFFORTS },
-        { value: 'haiku', label: 'Haiku', efforts: [] }
-      ]
+  return withExtraModels(
+    models.length
+      ? models
+      : [
+          { value: 'opus', label: 'Opus', efforts: ALL_EFFORTS },
+          { value: 'sonnet', label: 'Sonnet', efforts: ALL_EFFORTS },
+          { value: 'haiku', label: 'Haiku', efforts: [] }
+        ]
+  )
 }
 
 /** Effort the composer should start with for a model: the one last used with it, if the model still accepts it. */

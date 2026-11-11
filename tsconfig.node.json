@@ -11,5 +11,6 @@
     "noEmit": true,
     "paths": { "@shared/*": ["./src/shared/*"] }
   },
-  "include": ["electron.vite.config.ts", "src/main/**/*", "src/tools/**/*.ts", "src/headless/**/*", "src/preload/**/*", "src/shared/**/*", "test/**/*.ts"]
+  "include": ["electron.vite.config.ts", "src/main/**/*", "src/tools/**/*.ts", "src/headless/**/*", "src/preload/**/*", "src/shared/**/*", "test/**/*.ts"],
+  "exclude": ["src/tools/**/*.worker.ts"]
 }

@@ -1,0 +1,189 @@
+/* The Images panel; it reuses the loop editor's fields, the composer's toggle and the image viewer. */
+.img-tool .step-opts {
+  flex-wrap: wrap;
+  align-items: center;
+}
+.img-keybar fieldset.lock {
+  display: flex;
+  align-items: center;
+}
+.img-key {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--grey-2);
+  white-space: nowrap;
+}
+.img-key-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.img-key-form a {
+  color: var(--bone);
+}
+input.img-key-input {
+  flex: 1;
+  min-width: 200px;
+  height: 30px;
+  padding: 0 10px;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.img-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-radius: 6px;
+}
+.img-form.is-drop-over {
+  outline: 1px dashed var(--grey-3);
+  outline-offset: 6px;
+}
+.img-refs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.img-refs .attachments {
+  padding: 0;
+}
+
+/* ---------- gallery ---------- */
+
+.img-empty {
+  padding-top: 4px;
+}
+.img-gallery {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+.img-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.img-toolbar .spacer {
+  flex: 1;
+}
+.img-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  gap: 14px 12px;
+}
+.img-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.img-tile {
+  position: relative;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg-sunken);
+  overflow: hidden;
+  isolation: isolate;
+}
+.img-tile:not(:disabled):hover {
+  border-color: var(--grey-1);
+}
+.img-tile:disabled {
+  cursor: default;
+}
+.img-tile img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+/* Transparent images sit on a checkerboard of the two darkest neutrals, so their edges show. */
+.img-tile.is-cut,
+.img-checker img {
+  background: repeating-conic-gradient(var(--bg-raised) 0 25%, var(--bg-sunken) 0 50%) 0 0 / 16px 16px;
+}
+.img-card.is-busy .img-tile img {
+  opacity: 0.4;
+}
+.img-status {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: rgba(19, 19, 18, 0.85);
+  font-size: 11px;
+  color: var(--grey-3);
+}
+.img-status-error {
+  display: block;
+  right: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.img-error {
+  align-self: start;
+  padding: 10px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--grey-3);
+  text-align: left;
+  display: -webkit-box;
+  -webkit-line-clamp: 7;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.img-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+input.img-prompt {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: none;
+  outline: none;
+  font-size: 12px;
+  color: var(--grey-3);
+  text-overflow: ellipsis;
+}
+input.img-prompt:hover {
+  border-color: var(--line);
+}
+input.img-prompt:focus {
+  border-color: var(--grey-1);
+  background: var(--bg-sunken);
+  color: var(--bone);
+}
+.img-row .icon-btn.is-armed {
+  background: var(--bg-hover);
+  color: var(--bone);
+}
+.img-machine {
+  padding-left: 7px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--grey-1);
+}
+.img-viewer-name {
+  max-width: 40vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

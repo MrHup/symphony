@@ -2,6 +2,7 @@
 // belongs to Symphony as a whole: its panel spans every machine, and each run of it picks the machine
 // it runs on.
 import type { ReactNode } from 'react'
+import { ImagesPanel } from '../../tools/images/Panel'
 import { MobileUiPanel } from '../../tools/mobile-ui/Panel'
 import type { Panel } from './store'
 
@@ -18,5 +19,11 @@ export const TOOLS: ToolEntry[] = [
     name: 'Mobile UI',
     description: 'A working replica of a mobile app with its documentation, previewed on your phone',
     Panel: MobileUiPanel
+  },
+  {
+    id: 'images',
+    name: 'Images',
+    description: 'Images, icons and die-cut stickers from Gemini image models, from prompts and reference images',
+    Panel: ImagesPanel
   }
 ]

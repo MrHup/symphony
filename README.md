@@ -33,7 +33,7 @@ Other scripts:
 | `npm run typecheck` | Type-check the main process and the UI |
 | `npm run drive` | Launch the built app under Playwright and accept test commands over HTTP (see `scripts/drive.mjs`) |
 | `npm run headless -- <command>` | Run this machine as a remote machine without Electron or a window (see "Headless remote machine" below) |
-| `npm test` | Protocol, control and security tests of remote orchestration and of the Mobile UI phone preview, and loop tests (`test/`), under plain Node |
+| `npm test` | Protocol, control and security tests of remote orchestration and of the Mobile UI phone preview, loop tests, and Images tests (`test/`), under plain Node |
 
 `npm run dev` and `npm start` go through `scripts/run.mjs`, which clears `ELECTRON_RUN_AS_NODE`.
 VS Code and other Electron-based tools export that variable to the processes they spawn, and it
@@ -165,6 +165,7 @@ browsers, SDKs that Symphony itself does not) and how to use it:
 | Tool | What it does |
 |---|---|
 | [Mobile UI](src/tools/mobile-ui/README.md) | A UI recipe of a mobile app (a working web replica and its documentation with screenshots), previewed full screen on your phone, where you select a component or view and ask Claude to change it |
+| [Images](src/tools/images/README.md) | Images, cut-outs, icons and die-cut stickers from Gemini image models, from prompts and reference images, downloaded one by one or as a zip. Needs a Gemini API key, set in its panel |
 
 How tools fit in:
 
@@ -408,6 +409,10 @@ with your own environment, so a `claude` you run there yourself is not covered.
 | Preview exposure | Off until a preview is opened, private addresses only, every path starts with a 256-bit secret; Stop ends a link for good | The server can start sessions, so it follows the remote-orchestration rules: nothing listens unless in use, never on a public interface, and nobody on the network can do anything without the link. |
 | What a comment passes | The text; the selection (component or whole view, its `data-ui`/`data-screen` name, selector, text and markup); the route and screen size; a screenshot of that view at the phone's size with the selection outlined, and the page's errors | Name and selector point Claude to the code, the route lets it capture the same view again, and the picture shows what the person saw. The screenshot is taken on the recipe's machine in headless Chrome or Edge, because a phone browser cannot capture a page itself. |
 | Recipe documentation | Updated after every change, for the parts that changed (text and screenshots) | A recipe is handed over as an app plus its documentation; documentation that lags behind the app is wrong in exactly the places that were just discussed. It costs a little time per comment, and the phone reloads only when the session is done. |
+| Images: Gemini calls | The REST API (`generateContent`) with `fetch`, from the core of the machine that makes the images | No SDK to install or bundle, the same code runs in the headless build, and a remote machine makes images with its own key like any other tool request. The request fields were checked against the `google-genai` Python SDK the Icon Generator uses. |
+| Images: the key | Saved per machine, sealed with the OS keychain (`safeStorage`, like the device key), and only its last four characters leave the core. `GEMINI_API_KEY` or `GOOGLE_API_KEY` is used when none is saved | The key is a billing credential. It never enters the window's state, a snapshot or the audit log (which records tool method names only), and Gemini checks it before it is saved. A key saved in the panel wins over the environment, so a key can be replaced without restarting. |
+| Images: cut-outs and stickers | Made in the window, in a Web Worker, from the generated image; the core stores only what Gemini returned | Electron's main process has no image codec that works headless, while the window decodes any format and encodes PNG. The Icon Generator's numpy/scipy steps are ported to plain TypeScript over pixel arrays, so they are tested under Node. Switching to the sticker or another download size needs no new image. |
+| Images: restarts | Images left unfinished show as stopped; nothing is made again on its own | Each image costs money, so the person decides what to make again. |
 
 ## Code map
 
@@ -438,13 +443,13 @@ with your own environment, so a `claude` you run there yourself is not covered.
 | `src/renderer/src/components/LoopPanel.tsx` | Loop editor (the graph of steps and folders), running view, human review card, history |
 | `src/main/tools.ts` | The tool registry for the main process: each tool's core in the core (`ToolManager`), its local part on the window's machine (`LocalTools`) |
 | `src/renderer/src/tools.ts`, `components/ToolMenu.tsx` | The tool registry for the window, the dock's tools menu, the tool panel, the machine picker tools use |
-| `src/tools/<id>/` | One tool each, with its own README: [Mobile UI](src/tools/mobile-ui/README.md) |
+| `src/tools/<id>/` | One tool each, with its own README: [Mobile UI](src/tools/mobile-ui/README.md), [Images](src/tools/images/README.md) |
 | `src/renderer/src/speech/` | Dictation: microphone capture, the local Whisper worker, live preview |
 | `src/main/dictation.ts` | Clean-up of dictated text with Claude Haiku |
 | `src/headless/` | The headless remote machine: `index.ts` (command line, core and link without a window), `electron.ts` (plain-Node stand-in for the Electron APIs the remote path uses); built and run by `scripts/headless.mjs` |
 | `scripts/drive.mjs` | Test driver: Playwright `_electron` behind a small HTTP command server |
 | `src/renderer/src/components/RemotePanel.tsx`, `MachinePanels.tsx`, `NeedsYou.tsx`, `ControlBanner.tsx` | Remote-machines panel, pairing and folder browser, the Needs you list, the read-only banner |
-| `scripts/test.mjs`, `test/` | Remote-orchestration tests (an orchestrator and a remote machine in one Node process over TLS on 127.0.0.1), loop tests, Mobile UI preview tests |
+| `scripts/test.mjs`, `test/` | Remote-orchestration tests (an orchestrator and a remote machine in one Node process over TLS on 127.0.0.1), loop tests, Mobile UI preview tests, Images tests (processing, zip, prompt, and the core against a stand-in Gemini) |
 
 ## What was verified on Windows
 
@@ -522,8 +527,23 @@ on Windows 11, driving the built app:
   preview ending a link; delete removing the folder, project and sessions; after a restart, recipes
   back, the server off, and an unstopped preview's link unchanged. `npm test` covers the preview
   server's exposure rules and the certificate's name constraints.
+- **Images** (in the built app, driven by Playwright): the key form without a key; an invalid key
+  refused by the real Gemini API with its message, and nothing saved; a key from `GEMINI_API_KEY`
+  shown by its last four characters; a batch of two prompts sent to the real API and each image
+  showing Gemini's refusal of that key; a pasted reference image with its style/input choice and the
+  cost estimate; the cut-out of an anti-aliased icon on white (background and an enclosed hole
+  transparent, subject framed to fill) and its die-cut sticker; the full-window viewer; Download all
+  building a zip with the sticker version at 256 px, named after the prompts (read back in the page;
+  the save dialog itself was not opened); delete on the second click; an image whose remake failed
+  keeping its last version; images kept across a restart. `npm test` covers the processing, the zip,
+  the prompt, and the core against a stand-in Gemini (key checks, batches, retries, refusals,
+  references, remakes, deletes while running, restarts).
 
 Not verified on this machine:
+
+- **Images with a working Gemini key.** No paid key was used, so no image was actually generated:
+  the request format follows the `google-genai` SDK the Icon Generator uses with Flash and Flash
+  Lite, and Nano Banana 2.1 and Pro are listed from Google's docs without being tried.
 
 - **Mobile UI on a real phone and network**: installing and trusting the certificate on iOS and
   Android, adding the preview to the home screen and opening it full screen, phone browsers honoring

@@ -1,7 +1,7 @@
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { EFFORT_LABELS, type AgentInfo, type GitStats, type LoopInfo, type MachineState, type McpInfo, type NodeStatus, type Note, type Project, type SessionInfo, type SkillInfo } from '@shared/types'
-import { api, clock, machineConfig, useLock, useStore } from '../store'
+import { api, claimForWorkspace, clock, machineConfig, useLock, useStore } from '../store'
 import { cleanError } from './Composer'
 import { Glyph, statusLabel } from './Glyph'
 import { IconAutoApprove, IconBattery, IconDoc, IconFolder, IconLoop, IconOpenFolder, IconTerminal, IconTrash } from './icons'
@@ -410,7 +410,7 @@ function AddFolderButton({ name, machineId, lock }: { name: string; machineId?: 
       onClick={(e) => {
         e.stopPropagation()
         if (machineId) useStore.getState().openPanel('folders', machineId)
-        else void api.addProject()
+        else void api.addProject().then(claimForWorkspace)
       }}
     >
       <IconFolder />

@@ -74,6 +74,7 @@ function emptySnapshot(): AppSnapshot {
     machinePosition: { x: -420, y: -200 },
     control: null,
     notes: [],
+    workspaces: { list: [{ id: 'ws1', name: 'Workspace1' }], active: 'ws1', of: {} },
     tools: {}
   }
 }

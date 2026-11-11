@@ -103,6 +103,48 @@ button {
   left: 84px;
 }
 
+/* ---------- workspaces ---------- */
+
+.workspace-bar {
+  position: fixed;
+  top: 5px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--bg-raised);
+  z-index: 3;
+  -webkit-app-region: no-drag;
+}
+.workspace-tab {
+  height: 22px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--grey-2);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.workspace-tab:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--bone);
+}
+.workspace-tab.is-active {
+  background: var(--bg-hover);
+  color: var(--bone);
+}
+.workspace-tab:disabled {
+  cursor: default;
+}
+.workspace-add {
+  padding: 0 8px;
+}
+
 /* ---------- graph ---------- */
 
 .canvas {

@@ -176,6 +176,7 @@ export class SymphonyCore {
       machinePosition: s.machinePosition ?? { x: s.hubPosition.x, y: s.hubPosition.y - 200 },
       control: this.control,
       notes: s.notes,
+      workspaces: s.workspaces,
       tools: this.tools.state()
     }
   }
@@ -207,6 +208,10 @@ export class SymphonyCore {
   /** True while sessions or loops are running or waiting. */
   busy(): boolean {
     return this.sessions.busy() || this.loops.list().some((l) => ['optimizing', 'running', 'waiting'].includes(l.state))
+  }
+
+  private emitWorkspaces(): void {
+    this.emit({ type: 'workspaces', workspaces: this.state.workspaces })
   }
 
   persist(): void {
@@ -341,7 +346,9 @@ export class SymphonyCore {
     const n = this.state.projects.length
     const p: Project = { id: randomUUID(), path, name: basename(path), position: { x: 260 + (n % 3) * 560, y: -160 + Math.floor(n / 3) * 420 } }
     this.state.projects.push(p)
+    this.state.workspaces.of[p.id] = this.state.workspaces.active
     saveState(this.state)
+    this.emitWorkspaces()
     this.emit({ type: 'project', project: p })
     void this.refreshGit(p)
     void this.refreshProjectConfig(p)
@@ -460,6 +467,7 @@ export class SymphonyCore {
       removeProject: async (id) => {
         for (const s of sessions.list()) if (s.projectId === id) sessions.dismiss(s.id)
         this.state.projects = this.state.projects.filter((p) => p.id !== id)
+        delete this.state.workspaces.of[id]
         this.projectConfig.delete(id)
         this.gitStats.delete(id)
         saveState(this.state)
@@ -486,7 +494,9 @@ export class SymphonyCore {
       noteCreate: async (position) => {
         const n: Note = { id: randomUUID(), text: '', position }
         this.state.notes.push(n)
+        this.state.workspaces.of[n.id] = this.state.workspaces.active
         saveState(this.state)
+        this.emitWorkspaces()
         this.emit({ type: 'note', note: n })
         return n
       },
@@ -499,8 +509,32 @@ export class SymphonyCore {
       },
       noteDelete: async (id) => {
         this.state.notes = this.state.notes.filter((x) => x.id !== id)
+        delete this.state.workspaces.of[id]
         saveState(this.state)
         this.emit({ type: 'noteRemoved', id })
+      },
+      workspaceCreate: async () => {
+        const ws = this.state.workspaces
+        let n = ws.list.length + 1
+        while (ws.list.some((w) => w.name === `Workspace${n}`)) n++
+        const w = { id: randomUUID(), name: `Workspace${n}` }
+        ws.list.push(w)
+        ws.active = w.id
+        saveState(this.state)
+        this.emitWorkspaces()
+        return w
+      },
+      workspaceSelect: async (id) => {
+        if (!this.state.workspaces.list.some((w) => w.id === id)) throw new Error('Unknown workspace')
+        this.state.workspaces.active = id
+        saveState(this.state)
+        this.emitWorkspaces()
+      },
+      workspaceAssign: async (nodeId, workspaceId) => {
+        if (!this.state.workspaces.list.some((w) => w.id === workspaceId)) throw new Error('Unknown workspace')
+        this.state.workspaces.of[nodeId] = workspaceId
+        saveState(this.state)
+        this.emitWorkspaces()
       },
       startPipeline: (...a) => this.startPipeline(...a),
       startConfigSession: (...a) => this.startConfigSession(...a),

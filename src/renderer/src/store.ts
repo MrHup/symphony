@@ -24,7 +24,8 @@ import {
   type SessionInfo,
   type SkillInfo,
   type TranscriptItem,
-  type UsageInfo
+  type UsageInfo,
+  type WorkspaceState
 } from '@shared/types'
 
 export const api = window.symphony
@@ -79,6 +80,7 @@ interface State {
   machines: Record<string, MachineState>
   machinePosition: Point
   notes: Record<string, Note>
+  workspaces: WorkspaceState
   /** This machine's tool states, by tool id (a remote machine's are in its MachineState). */
   tools: Record<string, unknown>
   /** Set while another machine controls this one: the window is read-only. */
@@ -133,6 +135,20 @@ const omit = <T>(rec: Record<string, T>, id: string) => {
 }
 
 let zTop = 10
+
+const DEFAULT_WORKSPACES: WorkspaceState = { list: [{ id: 'ws1', name: 'Workspace1' }], active: 'ws1', of: {} }
+
+/** Whether a project, note or loop is in the selected workspace (nodes never assigned are in the first one). */
+export function inWorkspace(s: Pick<State, 'workspaces'>, id: string): boolean {
+  const { list, active, of } = s.workspaces
+  return (of[id] ?? list[0]?.id) === active
+}
+
+/** Moves a project or loop the window just added (or found already added) into the selected workspace. */
+export function claimForWorkspace<T extends { id: string } | null>(node: T): T {
+  if (node) void api.workspaceAssign(node.id, useStore.getState().workspaces.active)
+  return node
+}
 
 const PANEL_SIZES: Record<PanelKind, { w: number; h: number }> = {
   session: { w: 620, h: 720 },
@@ -209,6 +225,7 @@ export const useStore = create<State>((set, get) => ({
   machines: {},
   machinePosition: { x: -420, y: -200 },
   notes: {},
+  workspaces: DEFAULT_WORKSPACES,
   tools: {},
   control: null,
   remote: null,
@@ -249,6 +266,7 @@ export const useStore = create<State>((set, get) => ({
       machines: byId(s.machines ?? []),
       machinePosition: s.machinePosition ?? { x: s.hubPosition.x, y: s.hubPosition.y - 200 },
       notes: byId(s.notes ?? []),
+      workspaces: s.workspaces ?? DEFAULT_WORKSPACES,
       tools: s.tools ?? {},
       waitingSince
     })
@@ -315,6 +333,9 @@ export const useStore = create<State>((set, get) => ({
         break
       case 'models':
         set({ models: e.models })
+        break
+      case 'workspaces':
+        set({ workspaces: e.workspaces })
         break
       case 'focus':
         get().openPanel('session', e.sessionId)

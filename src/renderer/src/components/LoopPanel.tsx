@@ -2,7 +2,7 @@ import { applyNodeChanges, Handle, MarkerType, Position, ReactFlow, ReactFlowPro
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { EffortLevel, LoopDraft, LoopEdge, LoopFile, LoopFolder, LoopFolderRole, LoopInfo, LoopMove, LoopStep, LoopStepKind, Point } from '@shared/types'
 import { readImage } from '../images'
-import { api, clock, loopStatus, machineConfig, useLock, useStore, type Panel } from '../store'
+import { api, claimForWorkspace, clock, loopStatus, machineConfig, useLock, useStore, type Panel } from '../store'
 import { Attachments } from './Attachments'
 import { sizeText, Viewable } from './Files'
 import { useDictation } from '../speech/dictation'
@@ -392,7 +392,7 @@ function LoopEditor({ machineId, loop, onCreated }: { machineId?: string; loop?:
     setError(null)
     try {
       if (loop) return await api.loopUpdate(loop.id, draft)
-      const created = await api.loopCreate(draft, machineId)
+      const created = claimForWorkspace(await api.loopCreate(draft, machineId))
       onCreated(created)
       return created
     } catch (err) {

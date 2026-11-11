@@ -29,6 +29,20 @@ export interface Note {
   position: Point
 }
 
+/** A board of its own: projects, notes and loops are each in one workspace, and only the selected one is shown. */
+export interface Workspace {
+  id: string
+  name: string
+}
+
+/** Workspaces on this machine's window. Nodes missing from `of` are in the first workspace. */
+export interface WorkspaceState {
+  list: Workspace[]
+  active: string
+  /** Workspace of each project, note and loop, by node id. */
+  of: Record<string, string>
+}
+
 /** task: a normal session. optimize: the /optimize-prompt step of the pipeline. config: edits a skill or MCP server. loop: one run of a loop step. */
 export type SessionKind = 'task' | 'optimize' | 'config' | 'loop'
 
@@ -433,6 +447,7 @@ export interface AppSnapshot {
   /** Set while another Symphony controls this one: the window is read-only. */
   control: ControlState | null
   notes: Note[]
+  workspaces: WorkspaceState
   /** Each tool's state on this machine, by tool id (src/main/tools.ts). */
   tools: Record<string, unknown>
 }
@@ -565,6 +580,7 @@ export type MainEvent =
   | { type: 'remote'; status: RemoteStatus }
   | { type: 'note'; note: Note }
   | { type: 'noteRemoved'; id: string }
+  | { type: 'workspaces'; workspaces: WorkspaceState }
   /** A tool's state on one machine (this one when machineId is unset). */
   | { type: 'tool'; tool: string; state: unknown; machineId?: string }
 

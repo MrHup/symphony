@@ -2,7 +2,7 @@ import { applyNodeChanges, ReactFlow, SelectionMode, useReactFlow, type Edge, ty
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { LOCAL_MACHINE_NODE, machineNodeId, splitMachine } from '@shared/remote'
 import { USER_HUB_ID, type NodeStatus, type Point } from '@shared/types'
-import { api, hubIdFor, lockReason, loopStatus, machineUp, needsUser, rollup, useStore } from '../store'
+import { api, hubIdFor, inWorkspace, lockReason, loopStatus, machineUp, needsUser, rollup, useStore } from '../store'
 import { nodeTypes } from './nodes'
 
 const SESSION_DX = 400
@@ -32,7 +32,10 @@ function layout(s: State, moved: Record<string, Point>): { nodes: Node[]; edges:
   const sessions = Object.values(s.sessions)
     .filter((x) => !x.archived)
     .sort((a, b) => a.createdAt - b.createdAt)
-  const loops = Object.values(s.loops).sort((a, b) => a.createdAt - b.createdAt)
+  // Only the selected workspace's projects, loops and notes are drawn; machines and hubs show in every workspace.
+  const loops = Object.values(s.loops)
+    .filter((l) => inWorkspace(s, l.id))
+    .sort((a, b) => a.createdAt - b.createdAt)
   const loopIds = new Set(loops.map((l) => l.id))
   // Everything on an offline machine fades and loses the signal color: it cannot be answered until the machine is back.
   const remote = Object.values(s.machines)
@@ -101,7 +104,10 @@ function layout(s: State, moved: Record<string, Point>): { nodes: Node[]; edges:
   }
 
   // Projects with their own skills and MCP servers underneath.
+  const shownProjects = new Set<string>()
   for (const project of Object.values(s.projects)) {
+    if (!inWorkspace(s, project.id)) continue
+    shownProjects.add(project.id)
     const offline = off(project.machineId)
     const p = at(project.id, project.position)
     pos.set(project.id, p)
@@ -150,6 +156,8 @@ function layout(s: State, moved: Record<string, Point>): { nodes: Node[]; edges:
   const anchorCount = new Map<string, number>()
   for (const x of sessions) anchorCount.set(x.anchorId, (anchorCount.get(x.anchorId) ?? 0) + 1)
   for (const x of sessions) {
+    if (x.projectId && s.projects[x.projectId] && !shownProjects.has(x.projectId)) continue
+    if (s.loops[x.anchorId] && !loopIds.has(x.anchorId)) continue
     const offline = off(x.machineId)
     const hubId = hubIdFor(x.machineId)
     const anchor = pos.has(x.anchorId) ? x.anchorId : x.projectId && pos.has(x.projectId) ? x.projectId : hubId
@@ -198,7 +206,7 @@ function layout(s: State, moved: Record<string, Point>): { nodes: Node[]; edges:
   }
 
   // Sticky notes, drawn over everything else.
-  for (const n of Object.values(s.notes)) nodes.push({ id: n.id, type: 'note', position: at(n.id, n.position), data: { note: n } })
+  for (const n of Object.values(s.notes)) if (inWorkspace(s, n.id)) nodes.push({ id: n.id, type: 'note', position: at(n.id, n.position), data: { note: n } })
 
   // Leave from the side that faces the child, so edges never cut back across their own node.
   const mcpIds = new Set(s.mcp.map((m) => m.id))
@@ -340,7 +348,7 @@ export function Graph() {
   }, [state.arrangeRequest, getNodes, getEdges, fitAll])
 
   // Refit when the graph's structure changes (projects added/removed, config arrives, hub toggled), not on every status change.
-  const structure = `${Object.keys(state.projects).sort().join(',')}|${state.skills.length > 0}|${state.mcp.length > 0}|${JSON.stringify(state.skillsShown)}|${Object.values(state.machines).map((m) => `${m.id}:${m.status === 'pairing'}`).sort().join(',')}`
+  const structure = `${Object.keys(state.projects).sort().join(',')}|${state.skills.length > 0}|${state.mcp.length > 0}|${JSON.stringify(state.skillsShown)}|${Object.values(state.machines).map((m) => `${m.id}:${m.status === 'pairing'}`).sort().join(',')}|${state.workspaces.active}`
   useEffect(() => {
     const t = setTimeout(fitAll, 120)
     return () => clearTimeout(t)
@@ -374,7 +382,7 @@ export function Graph() {
       })
     })
     // Recompute on any state change or drag movement.
-  }, [state.projects, state.sessions, state.agents, state.skills, state.mcp, state.git, state.hubPosition, state.skillsShown, state.loops, state.machines, state.machinePosition, state.machineColors, state.notes, tick])
+  }, [state.projects, state.sessions, state.agents, state.skills, state.mcp, state.git, state.hubPosition, state.skillsShown, state.loops, state.machines, state.machinePosition, state.machineColors, state.notes, state.workspaces, tick])
 
   const onNodesChange = useCallback((changes: NodeChange[]) => {
     let movedAny = false

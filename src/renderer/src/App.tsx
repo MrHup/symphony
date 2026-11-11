@@ -17,7 +17,7 @@ import { UsagePanel } from './components/UsagePanel'
 import { LoopPanel } from './components/LoopPanel'
 import { AgentPanel, SessionPanel } from './components/SessionView'
 import { ClaudeMdPanel, DiffPanel, McpPanel, SkillPanel } from './components/Viewer'
-import { api, useStore, type Panel } from './store'
+import { api, claimForWorkspace, inWorkspace, useStore, type Panel } from './store'
 
 /** GitHub sign-in for one machine (targetId: 'local' or a machine id). */
 function LoginPanel({ panel }: { panel: Panel }) {
@@ -111,6 +111,24 @@ function AppMark() {
   )
 }
 
+/** The workspace tabs: each shows its own projects, notes and loops; + adds one and opens it. */
+function WorkspaceBar() {
+  const { list, active } = useStore((s) => s.workspaces)
+  const locked = useStore((s) => !!s.control)
+  return (
+    <div className="workspace-bar" role="tablist">
+      {list.map((w) => (
+        <button key={w.id} role="tab" aria-selected={w.id === active} className={`workspace-tab${w.id === active ? ' is-active' : ''}`} disabled={locked} onClick={() => w.id !== active && void api.workspaceSelect(w.id)}>
+          {w.name}
+        </button>
+      ))}
+      <button className="workspace-tab workspace-add" title="New workspace" disabled={locked} onClick={() => void api.workspaceCreate()}>
+        +
+      </button>
+    </div>
+  )
+}
+
 /** The tools (src/renderer/src/tools.ts). They belong to Symphony, not to a machine: each run picks one. */
 function ToolsButton() {
   return (
@@ -140,7 +158,7 @@ function RemoteButton() {
 export function App() {
   const ready = useStore((s) => s.ready)
   const panels = useStore((s) => s.panels)
-  const hasProjects = useStore((s) => Object.keys(s.projects).length > 0)
+  const hasProjects = useStore((s) => Object.keys(s.projects).some((id) => inWorkspace(s, id)))
   const control = useStore((s) => s.control)
   const [dragging, setDragging] = useState(false)
   useNeedsYouShortcut()
@@ -169,7 +187,7 @@ export function App() {
       e.preventDefault()
       for (const file of Array.from(e.dataTransfer?.files ?? [])) {
         const path = api.pathForFile(file)
-        if (path) void api.addProject(path)
+        if (path) void api.addProject(path).then(claimForWorkspace)
       }
     }
     window.addEventListener('dragover', over)
@@ -186,6 +204,7 @@ export function App() {
     <ReactFlowProvider>
       <div className="drag-strip" />
       <AppMark />
+      {ready && <WorkspaceBar />}
       {ready && <Graph />}
       {ready && !hasProjects && (
         <div className="empty-hint">

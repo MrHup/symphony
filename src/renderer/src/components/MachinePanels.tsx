@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { FolderListing } from '@shared/types'
-import { api, useLock, useStore, type Panel } from '../store'
+import { api, claimForWorkspace, useLock, useStore, type Panel } from '../store'
 import { cleanError } from './Composer'
 import { FloatingPanel } from './FloatingPanel'
 import { Glyph } from './Glyph'
@@ -77,6 +77,7 @@ export function FolderBrowserPanel({ panel }: { panel: Panel }) {
     setError(null)
     api
       .addProject(path, machine.id)
+      .then(claimForWorkspace)
       .then((p) => (p ? useStore.getState().closePanel(panel.id) : setError('That folder could not be added.')))
       .catch((err) => setError(cleanError(err)))
       .finally(() => setBusy(false))

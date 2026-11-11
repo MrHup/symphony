@@ -3,7 +3,7 @@
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs'
 import { rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import type { EffortLevel, LoopInfo, Note, MachineColor, Point, Project, SessionInfo, TranscriptItem } from '@shared/types'
+import type { EffortLevel, LoopInfo, Note, MachineColor, Point, Project, SessionInfo, TranscriptItem, WorkspaceState } from '@shared/types'
 
 export interface PersistedState {
   projects: Project[]
@@ -20,6 +20,7 @@ export interface PersistedState {
   remoteLayout: Record<string, Record<string, Point>>
   /** Glyph colors of machines on this machine's graph, by machine id ('local' for this one). */
   machineColors: Record<string, MachineColor>
+  workspaces: WorkspaceState
 }
 
 let dataDir = ''
@@ -38,7 +39,7 @@ const transcriptDir = () => join(dir(), 'transcripts')
 const transcriptFile = (id: string) => join(transcriptDir(), `${id.replace(/[^\w-]/g, '_')}.json`)
 
 export function loadState(): PersistedState {
-  const fallback: PersistedState = { projects: [], sessions: [], hubPosition: { x: -420, y: 0 }, defaultModel: 'opus', efforts: {}, optimizePrompts: true, loops: [], notes: [], remoteLayout: {}, machineColors: {} }
+  const fallback: PersistedState = { projects: [], sessions: [], hubPosition: { x: -420, y: 0 }, defaultModel: 'opus', efforts: {}, optimizePrompts: true, loops: [], notes: [], remoteLayout: {}, machineColors: {}, workspaces: { list: [{ id: 'ws1', name: 'Workspace1' }], active: 'ws1', of: {} } }
   try {
     return { ...fallback, ...JSON.parse(readFileSync(stateFile(), 'utf8')) }
   } catch {

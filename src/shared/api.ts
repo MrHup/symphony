@@ -20,7 +20,8 @@ import type {
   LoopInfo,
   ReferenceFile,
   RemoteStatus,
-  TranscriptItem
+  TranscriptItem,
+  Workspace
 } from './types'
 
 /**
@@ -40,6 +41,11 @@ export interface InvokeApi {
   noteCreate(position: Point): Promise<Note>
   noteUpdate(id: string, text: string): Promise<void>
   noteDelete(id: string): Promise<void>
+  /** Workspaces stay on this machine. Create adds one and selects it. */
+  workspaceCreate(): Promise<Workspace>
+  workspaceSelect(id: string): Promise<void>
+  /** Moves a project, note or loop to a workspace. */
+  workspaceAssign(nodeId: string, workspaceId: string): Promise<void>
   /** optimize false: start the task session with the prompt as written, without /optimize-prompt. */
   startPipeline(projectId: string, prompt: string, model: string, effort?: EffortLevel, images?: ImageInput[], optimize?: boolean): Promise<void>
   startConfigSession(targetId: string, prompt: string, model: string, effort?: EffortLevel, images?: ImageInput[]): Promise<void>
@@ -154,6 +160,9 @@ export const INVOKE_METHODS: (keyof InvokeApi)[] = [
   'noteCreate',
   'noteUpdate',
   'noteDelete',
+  'workspaceCreate',
+  'workspaceSelect',
+  'workspaceAssign',
   'startPipeline',
   'startConfigSession',
   'sendMessage',

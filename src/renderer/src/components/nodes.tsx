@@ -36,7 +36,7 @@ export function useModelLabel(value: string, machineId?: string): string {
 
 // ---------- project ----------
 
-export type ProjectNodeType = Node<{ project: Project; status: NodeStatus; stats?: GitStats; busy: boolean; offline?: boolean; machine?: MachineState }, 'project'>
+export type ProjectNodeType = Node<{ project: Project; status: NodeStatus; stats?: GitStats; busy: boolean; offline?: boolean; machine?: MachineState; folded: number }, 'project'>
 
 /** The open-folder button's label, in the words of this machine's OS. */
 const FILE_MANAGER = api.platform === 'win32' ? 'Open in File Explorer' : api.platform === 'darwin' ? 'Open in Finder' : 'Open in the file manager'
@@ -45,7 +45,7 @@ const FILE_MANAGER = api.platform === 'win32' ? 'Open in File Explorer' : api.pl
 const DROP_NOTE_MS = 4000
 
 export function ProjectNode({ data }: NodeProps<ProjectNodeType>) {
-  const { project, status, stats, busy, offline, machine } = data
+  const { project, status, stats, busy, offline, machine, folded } = data
   const openPanel = useStore((s) => s.openPanel)
   const lock = useLock(project.machineId)
   const clean = !stats || (stats.added === 0 && stats.removed === 0)
@@ -72,7 +72,7 @@ export function ProjectNode({ data }: NodeProps<ProjectNodeType>) {
   return (
     <div
       className={`node node-project${stateClass(status, false, offline)}${drop.over ? ' is-drop-over' : ''}`}
-      title={lock ?? `${statusLabel(status)}\nDrop files here to add them to .claude-references`}
+      title={lock ?? `${statusLabel(status)}\nClick to ${folded ? 'show' : 'fold'} its sessions\nDrop files here to add them to .claude-references`}
       {...drop.props}
     >
       <Glyph status={status} size={30} />
@@ -83,6 +83,7 @@ export function ProjectNode({ data }: NodeProps<ProjectNodeType>) {
           {project.path}
         </span>
         {dropNote && <span className="node-sub drop-note">{dropNote}</span>}
+        {folded > 0 && <span className="node-sub">{folded} folded · click to show</span>}
         <div className="node-actions">
           {stats?.isRepo !== false && (
             <button

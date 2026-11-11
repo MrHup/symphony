@@ -115,15 +115,18 @@ function layout(s: State, moved: Record<string, Point>): { nodes: Node[]; edges:
     const status = shown(rollup(mine.map((x) => x.status)), offline)
     const busy = mine.some((x) => x.status !== 'finished')
     const cls = tint(project.machineId)
+    const extras = [...s.skills.filter((k) => k.projectId === project.id), ...s.mcp.filter((m) => m.projectId === project.id)]
+    // A collapsed project folds away its sessions, skills and MCP servers; its glyph still rolls up their status.
+    const collapsed = !!s.collapsed[project.id] && mine.length + extras.length > 0
     nodes.push({
       id: project.id,
       type: 'project',
       position: p,
       className: cls,
-      data: { project, status, stats: s.git[project.id], busy, offline, machine: project.machineId ? s.machines[project.machineId] : undefined }
+      data: { project, status, stats: s.git[project.id], busy, offline, machine: project.machineId ? s.machines[project.machineId] : undefined, folded: collapsed ? mine.length + extras.length : 0 }
     })
     edge(project.machineId ? machineNodeId(project.machineId) : LOCAL_MACHINE_NODE, project.id, false, true, offline)
-    const extras = [...s.skills.filter((k) => k.projectId === project.id), ...s.mcp.filter((m) => m.projectId === project.id)]
+    if (collapsed) continue
     extras.forEach((x, i) => {
       const xp = at(x.id, { x: p.x + 44, y: p.y + 104 + i * SKILL_DY })
       pos.set(x.id, xp)
@@ -156,7 +159,7 @@ function layout(s: State, moved: Record<string, Point>): { nodes: Node[]; edges:
   const anchorCount = new Map<string, number>()
   for (const x of sessions) anchorCount.set(x.anchorId, (anchorCount.get(x.anchorId) ?? 0) + 1)
   for (const x of sessions) {
-    if (x.projectId && s.projects[x.projectId] && !shownProjects.has(x.projectId)) continue
+    if (x.projectId && s.projects[x.projectId] && (!shownProjects.has(x.projectId) || s.collapsed[x.projectId])) continue
     if (s.loops[x.anchorId] && !loopIds.has(x.anchorId)) continue
     const offline = off(x.machineId)
     const hubId = hubIdFor(x.machineId)
@@ -382,7 +385,7 @@ export function Graph() {
       })
     })
     // Recompute on any state change or drag movement.
-  }, [state.projects, state.sessions, state.agents, state.skills, state.mcp, state.git, state.hubPosition, state.skillsShown, state.loops, state.machines, state.machinePosition, state.machineColors, state.notes, state.workspaces, tick])
+  }, [state.projects, state.sessions, state.agents, state.skills, state.mcp, state.git, state.hubPosition, state.skillsShown, state.loops, state.machines, state.machinePosition, state.machineColors, state.notes, state.workspaces, state.collapsed, tick])
 
   const onNodesChange = useCallback((changes: NodeChange[]) => {
     let movedAny = false
@@ -416,6 +419,8 @@ export function Graph() {
         return s.openPanel('loop', node.id)
       case 'hub':
         return s.toggleHub(node.id)
+      case 'project':
+        return s.toggleCollapsed(node.id)
       case 'skill':
         return s.openPanel('skill', node.id)
       case 'mcp':

@@ -81,6 +81,8 @@ interface State {
   machinePosition: Point
   notes: Record<string, Note>
   workspaces: WorkspaceState
+  /** Projects whose sessions, skills and MCP servers are folded away, by project id. */
+  collapsed: Record<string, boolean>
   /** This machine's tool states, by tool id (a remote machine's are in its MachineState). */
   tools: Record<string, unknown>
   /** Set while another machine controls this one: the window is read-only. */
@@ -116,6 +118,7 @@ interface State {
   setLightbox(l: State['lightbox']): void
   requestArrange(): void
   toggleHub(id: string): void
+  toggleCollapsed(projectId: string): void
   setDefaultModel(model: string, machineId?: string): void
   setModelEffort(model: string, effort: EffortLevel | null, machineId?: string): void
   setOptimizePrompts(on: boolean): void
@@ -226,6 +229,7 @@ export const useStore = create<State>((set, get) => ({
   machinePosition: { x: -420, y: -200 },
   notes: {},
   workspaces: DEFAULT_WORKSPACES,
+  collapsed: {},
   tools: {},
   control: null,
   remote: null,
@@ -501,6 +505,10 @@ export const useStore = create<State>((set, get) => ({
 
   toggleHub(id) {
     set((s) => ({ skillsShown: { ...s.skillsShown, [id]: !s.skillsShown[id] } }))
+  },
+
+  toggleCollapsed(projectId) {
+    set((s) => ({ collapsed: { ...s.collapsed, [projectId]: !s.collapsed[projectId] } }))
   },
 
   setDefaultModel(model, machineId) {

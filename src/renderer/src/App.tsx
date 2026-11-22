@@ -1,4 +1,3 @@
-import { ReactFlowProvider } from '@xyflow/react'
 import { useEffect, useState } from 'react'
 import './monaco'
 import { ColorMenu } from './components/ColorMenu'
@@ -6,18 +5,18 @@ import { ComposerBubble } from './components/Composer'
 import { ControlBanner } from './components/ControlBanner'
 import { Lightbox } from './components/Files'
 import { FloatingPanel, PanelTray } from './components/FloatingPanel'
-import { Graph } from './components/Graph'
-import { IconArrange, IconMeter, IconRemote, IconTools } from './components/icons'
 import { FolderBrowserPanel, PairingPanel } from './components/MachinePanels'
-import { NeedsYouButton, NeedsYouPanel, useNeedsYouShortcut } from './components/NeedsYou'
+import { NeedsYouPanel, useNeedsYouShortcut } from './components/NeedsYou'
 import { RemotePanel } from './components/RemotePanel'
 import { TerminalPanel } from './components/TerminalPanel'
 import { ToolMenu, ToolPanel } from './components/ToolMenu'
 import { UsagePanel } from './components/UsagePanel'
 import { LoopPanel } from './components/LoopPanel'
+import { SessionList } from './components/SessionList'
 import { AgentPanel, SessionPanel } from './components/SessionView'
-import { ClaudeMdPanel, DiffPanel, McpPanel, SkillPanel } from './components/Viewer'
-import { api, claimForWorkspace, inWorkspace, useStore, type Panel } from './store'
+import { Sidebar } from './components/Sidebar'
+import { ClaudeMdPanel, DiffPanel } from './components/Viewer'
+import { api, claimForWorkspace, useStore, type Panel } from './store'
 
 /** GitHub sign-in for one machine (targetId: 'local' or a machine id). */
 function LoginPanel({ panel }: { panel: Panel }) {
@@ -62,10 +61,6 @@ function PanelFor({ panel }: { panel: Panel }) {
       return <AgentPanel panel={panel} />
     case 'diff':
       return <DiffPanel panel={panel} />
-    case 'skill':
-      return <SkillPanel panel={panel} />
-    case 'mcp':
-      return <McpPanel panel={panel} />
     case 'claudemd':
       return <ClaudeMdPanel panel={panel} />
     case 'login':
@@ -89,18 +84,6 @@ function PanelFor({ panel }: { panel: Panel }) {
   }
 }
 
-/** Usage at a glance: one bar per window (5-hour, weekly, weekly per model). Opens the usage panel. */
-function UsageButton() {
-  const usage = useStore((s) => s.usage)
-  const windows = usage?.available ? usage.windows : []
-  const title = windows.length ? windows.map((w) => `${w.label}: ${Math.round(w.percent)}%`).join('\n') : 'Claude usage'
-  return (
-    <button className="dock-btn" title={title} onClick={() => useStore.getState().openPanel('usage', 'claude')}>
-      <IconMeter levels={windows.map((w) => w.percent / 100)} />
-    </button>
-  )
-}
-
 /** The window title, with a reminder while auto-approve is on. */
 function AppMark() {
   const on = useStore((s) => s.autoApprove)
@@ -111,55 +94,9 @@ function AppMark() {
   )
 }
 
-/** The workspace tabs: each shows its own projects, notes and loops; + adds one and opens it. */
-function WorkspaceBar() {
-  const { list, active } = useStore((s) => s.workspaces)
-  const locked = useStore((s) => !!s.control)
-  return (
-    <div className="workspace-bar" role="tablist">
-      {list.map((w) => (
-        <button key={w.id} role="tab" aria-selected={w.id === active} className={`workspace-tab${w.id === active ? ' is-active' : ''}`} disabled={locked} onClick={() => w.id !== active && void api.workspaceSelect(w.id)}>
-          {w.name}
-        </button>
-      ))}
-      <button className="workspace-tab workspace-add" title="New workspace" disabled={locked} onClick={() => void api.workspaceCreate()}>
-        +
-      </button>
-    </div>
-  )
-}
-
-/** The tools (src/renderer/src/tools.ts). They belong to Symphony, not to a machine: each run picks one. */
-function ToolsButton() {
-  return (
-    <button
-      className="dock-btn"
-      title="Tools"
-      onClick={(e) => {
-        const rect = e.currentTarget.getBoundingClientRect()
-        useStore.getState().setToolMenu({ left: rect.left, right: rect.right, top: rect.top })
-      }}
-    >
-      <IconTools size={16} />
-    </button>
-  )
-}
-
-/** Remote machines: orchestrate others, or let one orchestrate this machine. */
-function RemoteButton() {
-  const linked = useStore((s) => Object.keys(s.machines).length > 0 || !!s.control)
-  return (
-    <button className={`dock-btn${linked ? ' is-on' : ''}`} title="Remote machines" onClick={() => useStore.getState().openPanel('remote', 'settings')}>
-      <IconRemote />
-    </button>
-  )
-}
-
 export function App() {
   const ready = useStore((s) => s.ready)
   const panels = useStore((s) => s.panels)
-  const hasProjects = useStore((s) => Object.keys(s.projects).some((id) => inWorkspace(s, id)))
-  const control = useStore((s) => s.control)
   const [dragging, setDragging] = useState(false)
   useNeedsYouShortcut()
 
@@ -201,25 +138,17 @@ export function App() {
   }, [])
 
   return (
-    <ReactFlowProvider>
+    <>
       <div className="drag-strip" />
       <AppMark />
-      {ready && <WorkspaceBar />}
-      {ready && <Graph />}
-      {ready && !hasProjects && (
-        <div className="empty-hint">
-          <strong>Add a project folder</strong> with the folder button on This PC, or drop one anywhere. Right-click a project to start a session.
+      {ready && (
+        <div className="shell">
+          <Sidebar />
+          <SessionList />
         </div>
       )}
       <ControlBanner />
-      <div className="dock">
-        <button className="dock-btn" title="Arrange the graph so nothing overlaps" disabled={!!control} onClick={() => useStore.getState().requestArrange()}>
-          <IconArrange />
-        </button>
-        <ToolsButton />
-        <UsageButton />
-        <RemoteButton />
-        <NeedsYouButton />
+      <div className="tray-dock">
         <PanelTray />
       </div>
       {panels.map((p) => (
@@ -230,6 +159,6 @@ export function App() {
       <ToolMenu />
       <Lightbox />
       {dragging && <div className="drop-target" />}
-    </ReactFlowProvider>
+    </>
   )
 }

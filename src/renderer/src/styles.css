@@ -103,65 +103,221 @@ button {
   left: 84px;
 }
 
-/* ---------- workspaces ---------- */
+/* ---------- layout: sidebar and session list ---------- */
 
-.workspace-bar {
-  position: fixed;
-  top: 5px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  gap: 2px;
-  padding: 2px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: var(--bg-raised);
-  z-index: 3;
-  -webkit-app-region: no-drag;
+:root {
+  --sidebar-w: 256px;
 }
-.workspace-tab {
-  height: 22px;
-  padding: 0 10px;
+
+.shell {
+  position: fixed;
+  inset: 0;
+  display: flex;
+}
+
+.sidebar {
+  flex: none;
+  width: var(--sidebar-w);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-sunken);
+  border-right: 1px solid var(--line);
+  padding-top: 40px;
+}
+.side-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.side-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 24px;
+  padding: 0 2px 0 8px;
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--grey-1);
+}
+.side-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 30px;
+  padding: 0 8px;
   border: 0;
   border-radius: 5px;
   background: none;
-  color: var(--grey-2);
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
+  color: var(--grey-3);
+  text-align: left;
 }
-.workspace-tab:hover:not(:disabled) {
+.side-item:hover:not(:disabled) {
   background: var(--bg-hover);
   color: var(--bone);
 }
-.workspace-tab.is-active {
+.side-item.is-active {
   background: var(--bg-hover);
   color: var(--bone);
 }
-.workspace-tab:disabled {
+.side-item:disabled {
   cursor: default;
 }
-.workspace-add {
+/* A workspace row: the select button, and a rename button that shows on hover. */
+.side-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.side-row > .icon-btn {
+  position: absolute;
+  right: 4px;
+  width: 22px;
+  height: 22px;
+  opacity: 0;
+  transition: opacity 150ms;
+}
+.side-row:hover > .icon-btn,
+.side-row > .icon-btn:focus-visible {
+  opacity: 1;
+}
+/* The count steps aside for the rename button. */
+.side-row:hover .side-item-count {
+  visibility: hidden;
+}
+.side-rename {
+  width: 100%;
+  height: 30px;
   padding: 0 8px;
+  border: 1px solid var(--grey-1);
+  border-radius: 5px;
+  outline: none;
+  background: var(--bg-raised);
+  color: var(--bone);
+}
+.side-rename:focus {
+  border-color: var(--grey-3);
+}
+.side-item-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.side-item-count {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--grey-1);
+}
+/* Something in that workspace waits for you. */
+.ws-waiting {
+  min-width: 18px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 2px;
+  background: var(--signal);
+  color: var(--on-signal);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
 }
 
-/* ---------- graph ---------- */
+/* ---------- machines (sidebar) ---------- */
 
-.canvas {
-  position: fixed;
-  inset: 0;
+.machine-card {
+  padding: 8px 8px 6px;
+  border-radius: 6px;
+}
+.machine-card + .machine-card {
+  margin-top: 4px;
+}
+.machine-card:hover {
+  background: var(--bg-raised);
+}
+.machine-card.is-pairing {
+  cursor: pointer;
+}
+.machine-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.machine-name {
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* An offline machine stays readable: its broken ring and label say what happened. */
+.machine-card.is-down .machine-name {
+  color: var(--grey-3);
+}
+.machine-lines {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding-left: 23px;
+  min-width: 0;
+}
+.machine-sub {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 8px;
+  font-size: 11px;
+  color: var(--grey-2);
+}
+.machine-sub .battery {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.machine-actions {
+  display: flex;
+  gap: 2px;
+  margin: 3px 0 0 -5px;
+}
+.machine-actions .icon-btn.is-on {
+  color: var(--bone);
+  background: var(--bg-hover);
 }
 
-.react-flow {
-  background: var(--bg);
+/* The machine a session, project or loop runs on, in that machine's color. */
+.machine-pill {
+  flex: none;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  height: 18px;
+  padding: 0 7px;
+  border: 1px solid color-mix(in srgb, var(--accent, var(--grey-1)) 60%, transparent);
+  border-radius: 9px;
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 16px;
+  color: var(--accent, var(--grey-3));
+}
+/* Offline, asleep or quit: dashed, grey, and named. Never the signal color. */
+.machine-pill.is-down {
+  border-style: dashed;
+  border-color: var(--grey-1);
+  color: var(--grey-2);
 }
 
-.react-flow__edge-path {
-  stroke: var(--line-strong);
-  stroke-width: 1;
-  transition: stroke 200ms;
-}
-/* Machine colors: set on a node, they tint its glyph (see Glyph.tsx). */
+/* Machine colors, picked by right-clicking a machine: they tint its tags and glyphs (see Glyph.tsx). */
 .accent-blue {
   --accent: #6f9fd8;
 }
@@ -180,13 +336,259 @@ button {
 .accent-sand {
   --accent: #c8b68c;
 }
-.react-flow__edge.edge-signal .react-flow__edge-path {
-  stroke: var(--signal);
+
+/* ---------- session list ---------- */
+
+.list {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
-.react-flow__edge.edge-faded .react-flow__edge-path {
-  stroke: var(--line);
+.list-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 48px;
+  margin-top: 36px;
+  padding: 0 28px;
+  border-bottom: 1px solid var(--line);
+}
+.list-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.list-meta {
+  font-size: 12px;
+  color: var(--grey-2);
+  white-space: nowrap;
+}
+.spacer {
+  flex: 1;
+}
+.list-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  /* Room for minimized panels at the bottom. */
+  padding: 0 28px 80px;
+}
+.list-column {
+  max-width: 940px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding-top: 16px;
 }
 
+.group {
+  border-radius: 6px;
+}
+.group.is-drop-over {
+  outline: 1px dashed var(--grey-3);
+  outline-offset: 4px;
+}
+.group-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 4px 4px 4px 0;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+}
+.group-fold {
+  /* The name keeps its room; the path is what gets cut. */
+  flex: 0 0 auto;
+  max-width: 45%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 2px 6px 2px 2px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  text-align: left;
+}
+.group-fold > svg:first-child {
+  flex: none;
+  color: var(--grey-1);
+  transition: transform 150ms var(--ease-out);
+}
+.group-fold.is-open > svg:first-child {
+  transform: rotate(90deg);
+}
+.group-fold:hover > svg:first-child {
+  color: var(--bone);
+}
+.group-title {
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.group-path {
+  min-width: 0;
+  flex: 0 1 auto;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--grey-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+.group-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.group-actions .btn {
+  margin-left: 8px;
+}
+.group-note {
+  padding: 6px 0 0 24px;
+  font-size: 11px;
+  color: var(--grey-2);
+}
+/* A project on an offline machine: faded, with its machine tag still readable. */
+.group.is-offline .group-head > :not(.machine-pill) {
+  opacity: 0.55;
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  padding-top: 4px;
+}
+.rows-empty {
+  padding: 10px 0 6px 24px;
+  font-size: 12px;
+  color: var(--grey-1);
+}
+.rows-more {
+  align-self: flex-start;
+  margin: 2px 0 0 18px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  font-size: 12px;
+  color: var(--grey-2);
+}
+.rows-more:hover {
+  background: var(--bg-hover);
+  color: var(--bone);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 5px 10px 5px 18px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  text-align: left;
+  transition: opacity 400ms var(--ease-out);
+}
+.row:hover {
+  background: var(--bg-raised);
+}
+.row.is-nested {
+  padding-left: 40px;
+}
+/* Subagents hang under their session while they run. */
+.row-agent {
+  min-height: 28px;
+  padding-left: 48px;
+}
+.row.is-nested ~ .row-agent {
+  padding-left: 70px;
+}
+.row-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.row-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.row-agent .row-title {
+  font-size: 12px;
+  color: var(--grey-3);
+}
+.row-sub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--grey-2);
+  overflow: hidden;
+  white-space: nowrap;
+}
+.row-kind {
+  font-size: 11px;
+  color: var(--grey-2);
+  white-space: nowrap;
+}
+.row-time {
+  flex: none;
+  width: 96px;
+  text-align: right;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--grey-1);
+  white-space: nowrap;
+}
+/* Finished: dimmed, as the outline glyph says. Offline: everything on that machine fades, whatever its last state. */
+.row.is-finished,
+.row.is-offline {
+  opacity: 0.45;
+}
+.row.is-finished:hover,
+.row.is-offline:hover {
+  opacity: 0.9;
+}
+.row.is-leaving {
+  opacity: 0;
+  transition: opacity 2200ms ease-in;
+}
+.row.is-leaving:hover {
+  opacity: 0.85;
+  transition-duration: 150ms;
+}
+
+/* ---------- React Flow (the loop editor) ---------- */
+
+.react-flow {
+  background: var(--bg);
+}
+.react-flow__edge-path {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+  transition: stroke 200ms;
+}
 .react-flow__handle {
   opacity: 0;
   width: 1px;
@@ -196,7 +598,6 @@ button {
   border: 0;
   pointer-events: none;
 }
-
 .react-flow__node {
   cursor: default;
 }
@@ -206,116 +607,13 @@ button {
 .react-flow__node.dragging {
   cursor: grabbing;
 }
-
-/* Multi-selection (Shift+drag). Selected nodes are outlined; the group box React Flow draws would
-   cover them and swallow clicks. */
-.canvas .react-flow {
-  --xy-selection-background-color: rgba(233, 229, 220, 0.04);
-  --xy-selection-border: 1px dashed var(--grey-2);
-}
-.canvas .react-flow__node.selected > * {
-  outline: 1px dashed var(--grey-2);
-  outline-offset: 6px;
-  border-radius: 2px;
-}
-.canvas .react-flow__nodesselection {
-  display: none;
-}
-
-.node {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  white-space: nowrap;
-  transition: opacity 400ms var(--ease-out);
-}
-.node.is-finished {
-  opacity: 0.4;
-}
-.node.is-finished:hover {
-  opacity: 0.85;
-}
-.node.is-leaving {
-  opacity: 0;
-  transition: opacity 2200ms ease-in;
-}
-.node.is-leaving:hover {
-  opacity: 0.85;
-  transition-duration: 150ms;
-}
-
 .node-text {
   display: flex;
   flex-direction: column;
   min-width: 0;
 }
 
-.node-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.node-sub {
-  font-size: 11px;
-  color: var(--grey-2);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.node-project .node-title {
-  font-size: 16px;
-  font-weight: 600;
-  letter-spacing: -0.005em;
-}
-.node-project .node-path {
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--grey-1);
-  max-width: 260px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  direction: rtl;
-  text-align: left;
-}
-
-.node-session .node-title {
-  font-size: 13px;
-  max-width: 240px;
-}
-
-.node-agent .node-title {
-  font-size: 12px;
-  color: var(--grey-3);
-  max-width: 220px;
-}
-
-.node-skill .node-title,
-.node-mcp .node-title {
-  font-size: 12px;
-  color: var(--grey-3);
-  max-width: 190px;
-}
-.node-skill:hover .node-title,
-.node-mcp:hover .node-title {
-  color: var(--bone);
-}
-
-.node-hub .node-title {
-  font-family: var(--mono);
-  font-size: 13px;
-  font-weight: 500;
-}
-
-/* The project's actions sit in its sub-line: diff counts and the CLAUDE.md mark. */
-.node-actions {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-top: 4px;
-}
+/* ---------- controls ---------- */
 
 .diff-counts {
   font-family: var(--mono);
@@ -325,7 +623,6 @@ button {
   background: none;
   border: 0;
   padding: 2px 6px;
-  margin-left: -6px;
   border-radius: 4px;
   display: flex;
   gap: 10px;
@@ -369,13 +666,14 @@ button {
   background: none;
 }
 
-.node .reveal,
-.node-note .reveal {
+.group-head .reveal,
+.note .reveal {
   opacity: 0;
   transition: opacity 150ms;
 }
-.node:hover .reveal,
-.node-note:hover .reveal {
+.group-head:hover .reveal,
+.note:hover .reveal,
+.reveal:focus-visible {
   opacity: 1;
 }
 
@@ -466,15 +764,14 @@ button.identity:hover {
   }
 }
 
-/* ---------- dock (bottom left) ---------- */
+/* ---------- dock (bottom of the sidebar) ---------- */
 
 .dock {
-  position: fixed;
-  left: 20px;
-  bottom: 20px;
-  z-index: 5;
+  flex: none;
   display: flex;
   gap: 8px;
+  padding: 12px 16px 16px;
+  border-top: 1px solid var(--line);
 }
 
 .dock-btn {
@@ -496,12 +793,8 @@ button.identity:hover {
 }
 
 .empty-hint {
-  position: fixed;
-  left: 290px;
-  bottom: 30px;
+  padding: 28px 0;
   color: var(--grey-2);
-  text-align: center;
-  pointer-events: none;
   font-size: 14px;
 }
 .empty-hint strong {
@@ -595,16 +888,19 @@ button.identity:hover {
   display: none;
 }
 
-/* Minimized panels: chips beside the dock buttons, wrapping upward. */
+/* Minimized panels: chips at the bottom of the list, wrapping upward. */
+.tray-dock {
+  position: fixed;
+  left: calc(var(--sidebar-w) + 20px);
+  bottom: 16px;
+  z-index: 5;
+}
 .panel-tray {
   display: flex;
   flex-wrap: wrap-reverse;
   align-items: center;
   gap: 6px;
-  max-width: calc(100vw - 300px);
-}
-.panel-tray:not(:empty) {
-  margin-left: 8px;
+  max-width: calc(100vw - var(--sidebar-w) - 40px);
 }
 .tray-chip {
   display: flex;
@@ -643,30 +939,63 @@ button.identity:hover {
 
 /* ---------- sticky notes ---------- */
 
+.notes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 2px 0 4px;
+}
 /* Paper, not UI: the one surface allowed a hue of its own, kept dull so the signal still stands out. */
-.node-note {
+.note {
   position: relative;
-  width: 200px;
-  min-height: 180px;
-  padding: 14px 16px 16px;
+  width: 168px;
+  min-height: 64px;
+  max-height: 168px;
+  overflow-y: auto;
+  padding: 8px 22px 9px 11px;
   background: #e4d58f;
   color: #2b2716;
   border-radius: 2px 2px 2px 10px;
-  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.25), 0 8px 18px rgba(0, 0, 0, 0.45);
-  font-size: 13px;
-  line-height: 1.45;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.25), 0 4px 10px rgba(0, 0, 0, 0.3);
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: text;
+  overflow-wrap: anywhere;
 }
-.node-note .md code,
-.node-note .md pre {
+/* An open note grows to fit what is typed. */
+.note.is-editing {
+  max-height: none;
+}
+.note .md p,
+.note .md ul,
+.note .md ol {
+  margin-bottom: 4px;
+}
+.note .md ul,
+.note .md ol {
+  padding-left: 16px;
+}
+.note .md h1,
+.note .md h2,
+.note .md h3,
+.note .md h4 {
+  font-size: 12.5px;
+  margin: 6px 0 3px;
+}
+.note .md code {
+  font-size: 11px;
+}
+.note .md code,
+.note .md pre {
   background: rgba(0, 0, 0, 0.08);
 }
-.node-note .md a {
+.note .md a {
   color: inherit;
 }
-.node-note textarea {
+.note textarea {
   display: block;
   width: 100%;
-  min-height: 150px;
+  min-height: 46px;
   padding: 0;
   border: 0;
   outline: none;
@@ -675,20 +1004,22 @@ button.identity:hover {
   background: transparent;
   color: inherit;
   font-family: var(--mono);
-  font-size: 12px;
-  line-height: 1.5;
+  font-size: 11px;
+  line-height: 1.45;
 }
-.node-note textarea::placeholder,
+.note textarea::placeholder,
 .note-empty {
   color: rgba(43, 39, 22, 0.5);
 }
-.node-note .icon-btn {
+.note .icon-btn {
   position: absolute;
-  top: 4px;
-  right: 4px;
+  top: 2px;
+  right: 2px;
+  width: 20px;
+  height: 20px;
   color: rgba(43, 39, 22, 0.55);
 }
-.node-note .icon-btn:hover {
+.note .icon-btn:hover {
   background: rgba(0, 0, 0, 0.08);
   color: #2b2716;
 }
@@ -1647,15 +1978,6 @@ select.branch:hover {
   outline: 1px dashed var(--grey-3);
   outline-offset: -4px;
 }
-.node-project.is-drop-over {
-  outline: 1px dashed var(--grey-3);
-  outline-offset: 10px;
-  border-radius: 6px;
-}
-.node-project .drop-note {
-  max-width: 300px;
-  white-space: normal;
-}
 
 .t-user-images {
   display: flex;
@@ -1692,11 +2014,6 @@ select.branch:hover {
 .pip.is-current {
   background: var(--bone);
   border-color: var(--bone);
-}
-.node-loop .node-title {
-  font-size: 14px;
-  font-weight: 500;
-  max-width: 260px;
 }
 
 .loop-body {
@@ -2201,45 +2518,6 @@ fieldset.lock {
   font-size: 11px;
 }
 
-/* Everything on an offline machine: faded, whatever its last state. */
-.node.is-offline {
-  opacity: 0.4;
-}
-.node.is-offline:hover {
-  opacity: 0.85;
-}
-/* The offline machine node itself stays readable: its broken ring and label say what happened. */
-.node-machine.is-down .node-title {
-  color: var(--grey-3);
-}
-.react-flow__edge.edge-offline .react-flow__edge-path {
-  stroke: var(--line-strong);
-  stroke-dasharray: 4 4;
-}
-
-.node-machine .node-title {
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: -0.005em;
-}
-.node-machine .icon-btn.is-on {
-  color: var(--bone);
-  background: var(--bg-hover);
-}
-.node-machine .battery {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-/* A remote project names its machine under its label, so it reads as remote when zoomed in. */
-.node-project .node-machine {
-  font-family: var(--mono);
-  font-size: 10px;
-  color: var(--grey-2);
-  letter-spacing: 0.02em;
-}
-
 .machine-tag {
   flex: none;
   font-family: var(--mono);
@@ -2264,7 +2542,7 @@ fieldset.lock {
 .control-banner {
   position: fixed;
   top: 44px;
-  left: 50%;
+  left: calc(var(--sidebar-w) + (100vw - var(--sidebar-w)) / 2);
   transform: translateX(-50%);
   z-index: 40;
   display: flex;

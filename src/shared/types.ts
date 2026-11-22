@@ -35,6 +35,9 @@ export interface Workspace {
   name: string
 }
 
+/** The longest name a workspace can have. */
+export const WORKSPACE_NAME_MAX = 40
+
 /** Workspaces on this machine's window. Nodes missing from `of` are in the first workspace. */
 export interface WorkspaceState {
   list: Workspace[]

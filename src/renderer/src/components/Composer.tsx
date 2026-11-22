@@ -62,16 +62,14 @@ export function EffortSelect({ model, value, onChange, machineId }: { model: str
 }
 
 /**
- * The bubble that opens on right-click. On a project it feeds the prompt pipeline; on a skill or
- * MCP server it starts a session that makes the requested change.
+ * The bubble that opens from a project's New session button (or a right-click on the project). It
+ * feeds the prompt pipeline.
  */
 export function ComposerBubble() {
   const composer = useStore((s) => s.composer)
-  const project = useStore((s) => (composer?.kind === 'project' ? s.projects[composer.targetId] : undefined))
-  const skill = useStore((s) => (composer?.kind === 'skill' ? s.skills.find((k) => k.id === composer.targetId) : undefined))
-  const mcp = useStore((s) => (composer?.kind === 'mcp' ? s.mcp.find((m) => m.id === composer.targetId) : undefined))
+  const project = useStore((s) => (composer ? s.projects[composer.projectId] : undefined))
   // Each machine keeps its own models, default model and efforts (its account can offer different models).
-  const machineId = project?.machineId ?? skill?.machineId ?? mcp?.machineId
+  const machineId = project?.machineId
   const machine = useStore((s) => (machineId ? s.machines[machineId] : undefined))
   const defaultModel = useStore((s) => machineConfig(s, machineId).defaultModel)
   const [text, setText] = useState('')
@@ -99,7 +97,7 @@ export function ComposerBubble() {
     setError(null)
     setModel(defaultModel)
     requestAnimationFrame(() => area.current?.focus())
-  }, [composer?.targetId, composer?.kind])
+  }, [composer?.projectId])
 
   // Each model keeps its own effort: switching models (or the model list arriving) restores that model's last choice.
   useEffect(() => {
@@ -109,7 +107,7 @@ export function ComposerBubble() {
   useLayoutEffect(() => {
     if (!composer || !ref.current) return
     const { width, height } = ref.current.getBoundingClientRect()
-    // Open beside the node, flipping to its left when the right side has no room, so it never covers the node.
+    // Open beside the control, flipping to its left when the right side has no room, so it never covers it.
     const fitsRight = composer.right + 14 + width <= window.innerWidth - 16
     setSide(fitsRight ? 'right' : 'left')
     setPos({
@@ -125,10 +123,10 @@ export function ComposerBubble() {
     el.style.height = `${el.scrollHeight}px`
   }, [text])
 
-  if (!composer) return null
+  if (!composer || !project) return null
   const close = () => useStore.getState().setComposer(null)
-  const target = `${machine ? `${machine.name} · ` : ''}${project?.path ?? skill?.path ?? (mcp ? `MCP · ${mcp.name}` : '')}`
-  const placeholder = project ? `What should Claude do in ${project.name}?` : skill ? `How should ${skill.name} change?` : `What should change about ${mcp?.name ?? 'this server'}?`
+  const target = `${machine ? `${machine.name} · ` : ''}${project.path}`
+  const placeholder = `What should Claude do in ${project.name}?`
 
   const submit = async () => {
     const prompt = text.trim()
@@ -137,8 +135,7 @@ export function ComposerBubble() {
     setError(null)
     useStore.getState().setDefaultModel(model, machineId)
     try {
-      if (composer.kind === 'project') await api.startPipeline(composer.targetId, prompt, model, effort || undefined, pasted.images, optimize)
-      else await api.startConfigSession(composer.targetId, prompt, model, effort || undefined, pasted.images)
+      await api.startPipeline(project.id, prompt, model, effort || undefined, pasted.images, optimize)
       close()
     } catch (err) {
       setBusy(false)
@@ -199,12 +196,10 @@ export function ComposerBubble() {
             useStore.getState().setModelEffort(model, v || null, machineId)
           }}
         />
-        {project && (
-          <label className="opt-toggle" title="Rewrite the prompt with /optimize-prompt before the session starts">
-            <input type="checkbox" checked={optimize} onChange={(e) => useStore.getState().setOptimizePrompts(e.target.checked)} />
-            Optimize prompt
-          </label>
-        )}
+        <label className="opt-toggle" title="Rewrite the prompt with /optimize-prompt before the session starts">
+          <input type="checkbox" checked={optimize} onChange={(e) => useStore.getState().setOptimizePrompts(e.target.checked)} />
+          Optimize prompt
+        </label>
         <span className="spacer" />
         <kbd>{window.symphony.platform === 'darwin' ? '⌘' : 'Ctrl'}+Enter</kbd>
         <button className="btn primary" disabled={!text.trim() || busy || dictating} onClick={() => void submit()}>

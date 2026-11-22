@@ -11,7 +11,7 @@ export function PanelTray() {
 }
 
 /**
- * A draggable, resizable window floating over the graph. Drag by the header, resize from the corner.
+ * A draggable, resizable window floating over the session list. Drag by the header, resize from the corner.
  * With a machineId, the header names that machine, and while it is offline a one-line banner says
  * the panel shows its last known state. Minimized, it stays mounted (a terminal keeps its shell) but
  * hidden, and its chip in the tray brings it back.

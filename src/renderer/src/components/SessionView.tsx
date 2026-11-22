@@ -1,6 +1,6 @@
 import { createContext, memo, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { EFFORT_LABELS, SHOW_FILES_TOOL, type AskQuestion, type SessionInfo, type TranscriptItem } from '@shared/types'
-import { api, useLock, useStore, type Panel } from '../store'
+import { api, useLock, useModelLabel, useStore, type Panel } from '../store'
 import { cleanError } from './Composer'
 import { FileGallery } from './Files'
 import { FloatingPanel } from './FloatingPanel'
@@ -13,7 +13,6 @@ import { ReferenceChips } from './References'
 import { insertMentions, useFileDrop, useReferences } from '../references'
 import { useDictation } from '../speech/dictation'
 import { DictationOverlay, DictationStatus, MicButton } from './Dictate'
-import { useModelLabel } from './nodes'
 
 const EMPTY: TranscriptItem[] = []
 
@@ -471,7 +470,7 @@ export function SessionPanel({ panel }: { panel: Panel }) {
               <IconStop />
             </button>
           ) : (
-            <button className="icon-btn" title="Remove session from the graph" disabled={!!lock} onClick={() => void api.dismissSession(session.id)}>
+            <button className="icon-btn" title="Remove session from the list" disabled={!!lock} onClick={() => void api.dismissSession(session.id)}>
               <IconTrash />
             </button>
           )

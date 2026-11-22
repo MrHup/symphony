@@ -8,7 +8,7 @@ import { basename, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { InvokeApi } from '@shared/api'
 import { READ_METHODS } from '@shared/remote'
-import { USER_HUB_ID, withExtraModels, type AppSnapshot, type ControlState, type EffortLevel, type ImageInput, type UsageInfo, type GhAccounts, type GitStats, type McpInfo, type MainEvent, type ModelOption, type Note, type Point, type Project, type SkillInfo } from '@shared/types'
+import { USER_HUB_ID, WORKSPACE_NAME_MAX, withExtraModels, type AppSnapshot, type ControlState, type EffortLevel, type ImageInput, type UsageInfo, type GhAccounts, type GitStats, type McpInfo, type MainEvent, type ModelOption, type Note, type Point, type Project, type SkillInfo } from '@shared/types'
 import { dictationLanguage, inspect, isProjectScoped, projectSkills, readClaudeMd, readUsage, toMcpInfo, userSkills, writeClaudeMd } from './claudeConfig'
 import { TerminalManager } from './terminals'
 import { LoopManager } from './loops'
@@ -527,6 +527,15 @@ export class SymphonyCore {
       workspaceSelect: async (id) => {
         if (!this.state.workspaces.list.some((w) => w.id === id)) throw new Error('Unknown workspace')
         this.state.workspaces.active = id
+        saveState(this.state)
+        this.emitWorkspaces()
+      },
+      workspaceRename: async (id, name) => {
+        const w = this.state.workspaces.list.find((x) => x.id === id)
+        if (!w) throw new Error('Unknown workspace')
+        const clean = String(name).trim().slice(0, WORKSPACE_NAME_MAX)
+        if (!clean) throw new Error('A workspace needs a name')
+        w.name = clean
         saveState(this.state)
         this.emitWorkspaces()
       },

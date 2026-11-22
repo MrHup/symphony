@@ -14,15 +14,12 @@ import {
   type MachineColor,
   type MachineState,
   type MainEvent,
-  type McpInfo,
   type ModelOption,
   type NodeStatus,
   type Note,
-  type Point,
   type Project,
   type RemoteStatus,
   type SessionInfo,
-  type SkillInfo,
   type TranscriptItem,
   type UsageInfo,
   type WorkspaceState
@@ -30,7 +27,7 @@ import {
 
 export const api = window.symphony
 
-export type PanelKind = 'session' | 'agent' | 'diff' | 'skill' | 'mcp' | 'claudemd' | 'login' | 'terminal' | 'usage' | 'loop' | 'remote' | 'folders' | 'pairing' | 'needs' | 'tool'
+export type PanelKind = 'session' | 'agent' | 'diff' | 'claudemd' | 'login' | 'terminal' | 'usage' | 'loop' | 'remote' | 'folders' | 'pairing' | 'needs' | 'tool'
 
 export interface Panel {
   id: string
@@ -45,10 +42,10 @@ export interface Panel {
   minimized?: boolean
 }
 
+/** The prompt bubble that starts a session in a project. */
 export interface Composer {
-  kind: 'project' | 'skill' | 'mcp'
-  targetId: string
-  /** Screen rectangle of the node it points at. */
+  projectId: string
+  /** Screen rectangle of the control it points at. */
   left: number
   right: number
   top: number
@@ -59,30 +56,22 @@ interface State {
   projects: Record<string, Project>
   sessions: Record<string, SessionInfo>
   agents: Record<string, AgentInfo>
-  skills: SkillInfo[]
-  mcp: McpInfo[]
   git: Record<string, GitStats>
-  hubPosition: Point
-  /** Hubs whose user skills are shown, by hub node id. Hidden by default: there can be dozens. */
-  skillsShown: Record<string, boolean>
   gh: GhAccounts
   models: ModelOption[]
   defaultModel: string
   efforts: Record<string, EffortLevel>
   /** The composer's last "Optimize prompt" choice. */
   optimizePrompts: boolean
-  /** Glyph color of each machine's nodes, by machine id ('local' for this one). */
+  /** Color of each machine's tag and glyphs, by machine id ('local' for this one). */
   machineColors: Record<string, MachineColor>
   usage: UsageInfo | null
   loops: Record<string, LoopInfo>
   autoApprove: boolean
   /** Remote machines (on an orchestrator). */
   machines: Record<string, MachineState>
-  machinePosition: Point
   notes: Record<string, Note>
   workspaces: WorkspaceState
-  /** Projects whose sessions, skills and MCP servers are folded away, by project id. */
-  collapsed: Record<string, boolean>
   /** This machine's tool states, by tool id (a remote machine's are in its MachineState). */
   tools: Record<string, unknown>
   /** Set while another machine controls this one: the window is read-only. */
@@ -95,14 +84,12 @@ interface State {
   logins: Record<string, LoginPrompt>
   panels: Panel[]
   composer: Composer | null
-  /** The color picker of a machine node: its id ('local' for this one) and screen rectangle. */
+  /** The color picker of a machine: its id ('local' for this one) and the screen rectangle of its row. */
   colorMenu: { machineId: string; left: number; right: number; top: number } | null
   /** The tool list of the dock's tools button: the button's screen rectangle. */
   toolMenu: { left: number; right: number; top: number } | null
   /** The image viewer: images of one session or loop, and the one shown. */
   lightbox: { ownerId: string; files: AssetRef[]; index: number } | null
-  /** Bumped by the dock's Arrange button; the graph then lays itself out again. */
-  arrangeRequest: number
   apply(e: MainEvent): void
   load(s: AppSnapshot): void
   openPanel(kind: PanelKind, targetId: string): void
@@ -116,9 +103,6 @@ interface State {
   setToolMenu(m: State['toolMenu']): void
   setMachineColor(machineId: string, color: MachineColor | null): void
   setLightbox(l: State['lightbox']): void
-  requestArrange(): void
-  toggleHub(id: string): void
-  toggleCollapsed(projectId: string): void
   setDefaultModel(model: string, machineId?: string): void
   setModelEffort(model: string, effort: EffortLevel | null, machineId?: string): void
   setOptimizePrompts(on: boolean): void
@@ -141,10 +125,15 @@ let zTop = 10
 
 const DEFAULT_WORKSPACES: WorkspaceState = { list: [{ id: 'ws1', name: 'Workspace1' }], active: 'ws1', of: {} }
 
-/** Whether a project, note or loop is in the selected workspace (nodes never assigned are in the first one). */
+/** The workspace of a project, note or loop (ones never assigned are in the first one). */
+export function workspaceOf(s: Pick<State, 'workspaces'>, id: string): string | undefined {
+  const { list, of } = s.workspaces
+  return of[id] ?? list[0]?.id
+}
+
+/** Whether a project, note or loop is in the selected workspace. */
 export function inWorkspace(s: Pick<State, 'workspaces'>, id: string): boolean {
-  const { list, active, of } = s.workspaces
-  return (of[id] ?? list[0]?.id) === active
+  return workspaceOf(s, id) === s.workspaces.active
 }
 
 /** Moves a project or loop the window just added (or found already added) into the selected workspace. */
@@ -157,8 +146,6 @@ const PANEL_SIZES: Record<PanelKind, { w: number; h: number }> = {
   session: { w: 620, h: 720 },
   agent: { w: 560, h: 560 },
   diff: { w: 1180, h: 720 },
-  skill: { w: 760, h: 680 },
-  mcp: { w: 620, h: 560 },
   claudemd: { w: 820, h: 700 },
   login: { w: 380, h: 250 },
   terminal: { w: 820, h: 460 },
@@ -211,11 +198,7 @@ export const useStore = create<State>((set, get) => ({
   projects: {},
   sessions: {},
   agents: {},
-  skills: [],
-  mcp: [],
   git: {},
-  hubPosition: { x: -420, y: 0 },
-  skillsShown: {},
   gh: { installed: false, hosts: {} },
   models: [],
   defaultModel: 'opus',
@@ -226,10 +209,8 @@ export const useStore = create<State>((set, get) => ({
   loops: {},
   autoApprove: false,
   machines: {},
-  machinePosition: { x: -420, y: -200 },
   notes: {},
   workspaces: DEFAULT_WORKSPACES,
-  collapsed: {},
   tools: {},
   control: null,
   remote: null,
@@ -241,7 +222,6 @@ export const useStore = create<State>((set, get) => ({
   colorMenu: null,
   toolMenu: null,
   lightbox: null,
-  arrangeRequest: 0,
 
   load(s) {
     const prev = get().waitingSince
@@ -254,10 +234,7 @@ export const useStore = create<State>((set, get) => ({
       projects: byId(s.projects),
       sessions: byId(s.sessions),
       agents: byId(s.agents),
-      skills: s.skills,
-      mcp: s.mcp,
       git: s.git,
-      hubPosition: s.hubPosition,
       gh: s.gh,
       models: s.models,
       defaultModel: s.defaultModel,
@@ -268,7 +245,6 @@ export const useStore = create<State>((set, get) => ({
       loops: byId(s.loops ?? []),
       autoApprove: !!s.autoApprove,
       machines: byId(s.machines ?? []),
-      machinePosition: s.machinePosition ?? { x: s.hubPosition.x, y: s.hubPosition.y - 200 },
       notes: byId(s.notes ?? []),
       workspaces: s.workspaces ?? DEFAULT_WORKSPACES,
       tools: s.tools ?? {},
@@ -323,11 +299,7 @@ export const useStore = create<State>((set, get) => ({
         set((s) => ({ git: { ...s.git, [e.projectId]: e.stats } }))
         break
       case 'config':
-        // Each machine's skills and MCP servers are replaced separately.
-        set((s) => ({
-          skills: [...s.skills.filter((k) => k.machineId !== e.machineId), ...e.skills],
-          mcp: [...s.mcp.filter((m) => m.machineId !== e.machineId), ...e.mcp]
-        }))
+        // Skills and MCP servers are not shown in the window.
         break
       case 'gh':
         set({ gh: e.gh })
@@ -393,9 +365,6 @@ export const useStore = create<State>((set, get) => ({
               case 'diff':
               case 'claudemd':
                 return !!projects[p.targetId]
-              case 'skill':
-              case 'mcp':
-                return otherMachine(p.targetId)
               case 'terminal': {
                 const where = p.targetId.split('#')[0]
                 return otherMachine(where) && (where === 'home' || splitMachine(where) !== null || !!projects[where])
@@ -414,8 +383,6 @@ export const useStore = create<State>((set, get) => ({
             sessions,
             loops,
             agents,
-            skills: s.skills.filter((k) => k.machineId !== e.id),
-            mcp: s.mcp.filter((m) => m.machineId !== e.id),
             panels: s.panels.filter(keep)
           }
         })
@@ -497,18 +464,6 @@ export const useStore = create<State>((set, get) => ({
 
   setLightbox(l) {
     set({ lightbox: l })
-  },
-
-  requestArrange() {
-    set((s) => ({ arrangeRequest: s.arrangeRequest + 1 }))
-  },
-
-  toggleHub(id) {
-    set((s) => ({ skillsShown: { ...s.skillsShown, [id]: !s.skillsShown[id] } }))
-  },
-
-  toggleCollapsed(projectId) {
-    set((s) => ({ collapsed: { ...s.collapsed, [projectId]: !s.collapsed[projectId] } }))
   },
 
   setDefaultModel(model, machineId) {
@@ -642,6 +597,17 @@ export function useLock(machineId?: string): string | null {
   return useStore((s) => lockReason(s, machineId))
 }
 
+/** The display name of a model, from the list of the machine that runs it. */
+export function useModelLabel(value: string, machineId?: string): string {
+  const models = useStore((s) => machineConfig(s, machineId).models)
+  return models.find((m) => m.value === value)?.label ?? value
+}
+
+/** The name a machine goes by in the window ('This PC' for this one). */
+export function machineName(s: StoreState, machineId?: string): string {
+  return machineId ? (s.machines[machineId]?.name ?? 'Remote machine') : 'This PC'
+}
+
 /** A tool's state on a machine (this one when machineId is unset). */
 export function useToolState<T>(tool: string, machineId?: string): T | undefined {
   return useStore((s) => (machineId ? s.machines[machineId]?.tools?.[tool] : s.tools[tool])) as T | undefined
@@ -658,24 +624,37 @@ export interface NeedsItem {
   summary: string
   since: number
   offline: boolean
+  /** The workspace it is listed in; unset means every workspace (pairing, sessions outside projects and loops). */
+  workspace?: string
   open(): void
+}
+
+/**
+ * The workspace a session is listed in: its project's, or its loop's. Unset for sessions that belong
+ * to neither (changes to user skills or MCP servers), which are listed in every workspace.
+ */
+export function sessionWorkspace(s: Pick<State, 'workspaces' | 'projects' | 'loops'>, x: SessionInfo): string | undefined {
+  if (x.projectId && s.projects[x.projectId]) return workspaceOf(s, x.projectId)
+  const loopId = s.loops[x.anchorId] ? x.anchorId : x.loopId && s.loops[x.loopId] ? x.loopId : undefined
+  return loopId ? workspaceOf(s, loopId) : undefined
 }
 
 /** Every waiting approval, question, human loop step and pairing request, on every machine, oldest first. */
 export function needsYou(s: StoreState): NeedsItem[] {
   const items: NeedsItem[] = []
-  const machineName = (id?: string) => (id ? (s.machines[id]?.name ?? 'Remote machine') : 'This PC')
+  const nameOf = (id?: string) => machineName(s, id)
   const offline = (id?: string) => !!id && !isUp(s.machines[id])
   const projectName = (id: string | null | undefined) => (id ? (s.projects[id]?.name ?? '') : '~/.claude')
   for (const x of Object.values(s.sessions)) {
     if (!waiting(x.status) || x.archived) continue
     items.push({
       key: x.id,
-      machine: machineName(x.machineId),
+      machine: nameOf(x.machineId),
       project: projectName(x.projectId),
       summary: `${x.status === 'approval' ? 'Approval' : 'Question'} · ${x.title.split('\n')[0]}`,
       since: s.waitingSince[x.id] ?? x.createdAt,
       offline: offline(x.machineId),
+      workspace: sessionWorkspace(s, x),
       open: () => useStore.getState().openPanel('session', x.id)
     })
   }
@@ -684,11 +663,12 @@ export function needsYou(s: StoreState): NeedsItem[] {
     const step = l.steps.find((x) => x.id === l.current)?.title ?? ''
     items.push({
       key: l.id,
-      machine: machineName(l.machineId),
+      machine: nameOf(l.machineId),
       project: '',
       summary: `${l.name} · ${l.state === 'waiting' ? `your review: ${step}` : `paused at ${step}`}`,
       since: s.waitingSince[l.id] ?? l.createdAt,
       offline: offline(l.machineId),
+      workspace: workspaceOf(s, l.id),
       open: () => useStore.getState().openPanel('loop', l.id)
     })
   }

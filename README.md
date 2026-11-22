@@ -1,9 +1,10 @@
 # Symphony
 
-A desktop app that orchestrates Claude Code sessions across the projects on one machine. Each
-project is a node on a graph; every session, subagent, skill and MCP server is a node connected to
-it. Everything is monochrome except one color, safety orange, which appears only when something is
-waiting for you.
+A desktop app that orchestrates Claude Code sessions across the projects on one machine, and on
+other machines on your network. Sessions are listed like a chat history, newest first, grouped by
+project; workspaces in the sidebar each hold their own projects, loops and sticky notes, and every
+session is tagged with the machine it runs on. Everything is monochrome except one color, safety
+orange, which appears only when something is waiting for you.
 
 ## Run it
 
@@ -16,7 +17,7 @@ Prerequisites:
   cloud-provider billing (see "Subscription only" below). Symphony runs the Claude Code binary that
   ships with the Agent SDK, so a separate CLI install is not required.
 - Optional: [GitHub CLI](https://cli.github.com) (`gh`) for the GitHub identity feature. Symphony
-  can sign you in to gh from the hub node, so no terminal is needed for that either.
+  can sign you in to gh from the machine's entry in the sidebar, so no terminal is needed for that either.
 - Tools (see "Tools" below) can need more; each one's documentation lists what.
 
 ```bash
@@ -39,7 +40,7 @@ Other scripts:
 VS Code and other Electron-based tools export that variable to the processes they spawn, and it
 makes Electron start as plain Node.
 
-The app keeps its graph and transcripts in Electron's userData folder
+The app keeps its projects, sessions and transcripts in Electron's userData folder
 (`%APPDATA%\symphony` on Windows, `~/Library/Application Support/symphony` on macOS). Set
 `SYMPHONY_USER_DATA` to use a different folder, for example for test runs.
 `SYMPHONY_MACHINE_NAME` overrides the machine name remote orchestration shows, and
@@ -50,44 +51,43 @@ on one machine can be tested without touching the network or the firewall.
 
 | To | Do this |
 |---|---|
-| Add a project | The folder button on the This PC node lets you pick a folder (on a remote machine's node, one of the folders it shares), or drop a folder onto the window |
-| Open a terminal | The terminal button on a project opens PowerShell in that folder; the one on a machine node (This PC, or a remote machine that allows terminals) opens it in that machine's home folder. Each click opens another floating terminal; closing one ends its shell |
-| Minimize a window | The − in its header. It waits as a chip next to the dock (click to restore); a minimized terminal or session keeps running |
-| Check Claude usage | The meter in the bottom-left dock shows the 5-hour, weekly and weekly-per-model (Fable) windows as bars; click it for exact percentages and reset times |
-| Start work | Right-click a project, type a prompt, pick a model and its effort, **Start** (Ctrl/⌘+Enter) |
+| Find your way around | The sidebar lists the workspaces (click one to switch, + to add one) and the machines. The main area lists the selected workspace: its sticky notes, then each project with its sessions newest first, then its loops. Each workspace shows how many sessions it has, and in orange how many wait for you |
+| Rename a workspace | The pencil that appears when you hover a workspace in the sidebar, or double-click it. Enter saves, Escape cancels |
+| Add a project | The folder button under This PC in the sidebar lets you pick a folder (under a remote machine, one of the folders it shares), or drop a folder onto the window. It joins the selected workspace |
+| Open a terminal | The terminal button on a project's header opens PowerShell in that folder; the one under a machine in the sidebar (This PC, or a remote machine that allows terminals) opens it in that machine's home folder. Each click opens another floating terminal; closing one ends its shell |
+| Minimize a window | The − in its header. It waits as a chip at the bottom of the list (click to restore); a minimized terminal or session keeps running |
+| Check Claude usage | The meter at the bottom of the sidebar shows the 5-hour, weekly and weekly-per-model (Fable) windows as bars; click it for exact percentages and reset times |
+| Start work | **New session** on a project's header (or right-click the header), type a prompt, pick a model and its effort, **Start** (Ctrl/⌘+Enter) |
 | Set effort | The picker next to the model lists only the levels that model accepts (low, medium, high, extra-high, max) and is hidden for models without effort, such as Haiku. Each model remembers its own effort; "Default effort" leaves it to Claude Code |
-| Build a loop | The loop button on a machine node (This PC, or a remote machine) opens the loop editor for a loop on that machine (see Loops below) |
-| Use a tool | The tools button in the dock lists the tools; pick one to open its panel. The panel covers every machine, and when you run something you pick the machine it runs on (see Tools below) |
-| Approve automatically | The double-check button on a machine node (This PC, or a remote machine). While it is on (bone white, and for this PC "auto-approving" next to the Symphony mark), Claude Code permission prompts on that machine are allowed without asking, and any waiting ones are released. It is off every time Symphony starts |
+| Build a loop | The loop button under a machine in the sidebar (This PC, or a remote machine) opens the loop editor for a loop on that machine (see Loops below). The workspace's loops are listed under **Loops**; click one to open it |
+| Use a tool | The tools button at the bottom of the sidebar lists the tools; pick one to open its panel. The panel covers every machine, and when you run something you pick the machine it runs on (see Tools below) |
+| Approve automatically | The double-check button under a machine in the sidebar (This PC, or a remote machine). While it is on (bone white, and for this PC "auto-approving" next to the Symphony mark), Claude Code permission prompts on that machine are allowed without asking, and any waiting ones are released. It is off every time Symphony starts |
 | Dictate a prompt | The mic button in the prompt bubble, a session's reply box or a loop step. Click, speak (the words appear dimmed as you speak), click again; the text is cleaned up and inserted where the cursor was. Escape cancels while listening |
-| Attach images | Paste them (Ctrl/⌘+V) into the right-click prompt bubble or a session's reply box. Thumbnails appear above the text; hover one to remove it. A reply can be just images |
-| Add reference files | Drop files onto a project (also on a remote machine) to save them in its `.claude-references` folder, or drop them on the prompt bubble or a session's reply box to save them and mention them where the cursor is (`@.claude-references/mockup.png`). The project's references are listed as chips under the prompt: click one to mention it, hover for × to delete it. Names are made safe for mentions (spaces become dashes), the same file dropped twice is kept once, and the folder has its own `.gitignore`, so references never show up as changes. Up to 20 MB per file |
-| Watch or answer a session | Click its node. Approvals, questions and replies all happen in that view |
-| Watch a subagent | Click its node (it hangs off its session while it runs) |
+| Attach images | Paste them (Ctrl/⌘+V) into the prompt bubble or a session's reply box. Thumbnails appear above the text; hover one to remove it. A reply can be just images |
+| Add reference files | Drop files onto a project's section of the list (also on a remote machine) to save them in its `.claude-references` folder, or drop them on the prompt bubble or a session's reply box to save them and mention them where the cursor is (`@.claude-references/mockup.png`). The project's references are listed as chips under the prompt: click one to mention it, hover for × to delete it. Names are made safe for mentions (spaces become dashes), the same file dropped twice is kept once, and the folder has its own `.gitignore`, so references never show up as changes. Up to 20 MB per file |
+| Watch or answer a session | Click its row. Approvals, questions and replies all happen in that view |
+| Watch a subagent | Click its row (it is listed under its session while it runs) |
 | See what a session made | Ask for it ("take a screenshot of the home screen"). Claude shows files with its `show_files` tool: images appear in the session view (click for the full-window viewer, ← → between images), PDFs and other files open in their default app. Images Claude reads itself, such as its own screenshots, appear under that tool call |
-| See uncommitted changes | Click the branch and `+n −n` counts on a project |
+| See uncommitted changes | Click the branch and `+n −n` counts on a project's header |
 | Stage, switch branch or commit | In that changes view, files are listed under **Staged** and **Changes**; the + and − on a file (or on a heading, for all of them) stage and unstage it. Pick a branch in the header, or write a message and **Commit** (Ctrl/⌘+Enter) to commit what is staged |
-| Edit CLAUDE.md | Click the page icon on a project. Save with Ctrl/⌘+S |
-| Open a project's folder | The open-folder button on a project on this PC opens it in File Explorer (Finder on macOS). Remote projects don't have it: the folder would open on that machine's screen |
-| Read a skill | Click it (Source or Rendered) |
-| Inspect an MCP server | Click it. Secret values are hidden |
-| Change a skill or MCP server | Right-click it, describe the change, **Start** |
-| Show or hide user skills | Click the `~/.claude` hub (they start hidden) |
-| Sign in to GitHub | Click "sign in to GitHub" on the hub; Symphony shows the one-time code and opens the browser |
-| Tidy the graph | The arrange button in the dock lays everything out as a tree, so no nodes or edges overlap. Sticky notes stay where they are |
-| Move several nodes at once | Shift+drag on empty canvas to select them, then drag any of them. Click the canvas to clear the selection |
-| Remove a project or a finished session | Trash icon on the project (hover) or in the session view |
+| Edit CLAUDE.md | Click the page icon on a project's header. Save with Ctrl/⌘+S |
+| Open a project's folder | The open-folder button on the header of a project on this PC opens it in File Explorer (Finder on macOS). Remote projects don't have it: the folder would open on that machine's screen |
+| Sign in to GitHub | Click "sign in to GitHub" under the machine in the sidebar, which otherwise shows the account gh uses there; Symphony shows the one-time code and opens the browser |
+| Write a sticky note | **New note** at the top of the list. Notes are markdown: click one to edit, click away to see it rendered; a note left empty is deleted. Each workspace has its own |
+| Pick a machine's color | Right-click the machine in the sidebar. Its tags and status shapes take that color |
+| Fold a project | Click its name (or the chevron beside it) to fold or show its sessions. A project shows its running sessions and its six latest finished ones; **Show earlier** lists the rest |
+| Remove a project or a finished session | Trash icon on the project's header (hover) or in the session view |
 
-How to read the graph without reading text:
+How to read the list without reading text:
 
 | Look | Meaning |
 |---|---|
-| Thin arc rotating around the node | Working |
-| Solid orange square, one damped shake | Needs your input (Claude asked a question, or an MCP server needs auth) |
+| Thin arc rotating around the shape | Working |
+| Solid orange square, one damped shake | Needs your input (Claude asked a question, or a remote machine asks to pair) |
 | Solid orange diamond, one damped shake | Needs your approval |
-| Outline, 40% opacity | Finished |
+| Outline, dimmed row | Finished |
 | Dashed circle | The `/optimize-prompt` step of the pipeline |
-| Circle with a slash | MCP server failed to connect |
+| Circle with a slash, dashed machine tag | The machine is offline, asleep or quit (see Remote machines) |
 
 A project takes the most urgent state of its sessions, and a session takes the state of its
 subagents, so a single orange shape anywhere tells you where to look.
@@ -97,7 +97,7 @@ subagents, so a single orange shape anywhere tells you where to look.
 A prompt typed on a project first runs as `/optimize-prompt <prompt>` in a session with the model you
 picked. When that session finishes, Symphony takes the fenced block under `## Optimized prompt` in its
 reply and starts a new session with that text as its first message, using the same model and effort. The
-optimize node fades out a few seconds later. If the reply has no such block, Symphony sends your
+optimize session's row fades out a few seconds later. If the reply has no such block, Symphony sends your
 original prompt and leaves a note in the new session saying so.
 
 Pasted images skip the optimize step's message: Claude Code only runs a slash command when the
@@ -105,7 +105,7 @@ message is plain text, so the optimizer is told that images are attached (and ke
 them), and the images go with the optimized prompt to the new session. Images larger than
 1568 px on the long edge, the size Claude works at, are scaled down before sending; the transcript
 keeps small thumbnails. If the optimize session fails, its
-node stays so you can open it.
+row stays so you can open it.
 
 ## Loops
 
@@ -113,7 +113,7 @@ A loop is a graph of steps that belongs to one machine and runs there, until it 
 no way out. Each step is either an **agent step** (a prompt that runs as its own Claude Code
 session) or a **human review** (you decide). Example: build the report, check it against the
 design, and you approve; the check can send the work back to the build. Create a loop with the loop
-button on a machine node; its node sits above that machine on the graph.
+button under a machine in the sidebar; it is listed under **Loops** in the selected workspace.
 
 - **The editor.** The loop panel holds the loop's graph. Add agent steps, human reviews and
   folders, drag them into place, and connect them: from a step's right side to the step that comes
@@ -134,7 +134,7 @@ button on a machine node; its node sits above that machine on the graph.
   also gives it the paths of its input and output folders, and the session may read and write both.
 - **Routing.** A step with no way out finishes the loop when it ends; a step with one way out moves
   on along it. An agent step with several ways out picks one by calling the `loop_route` tool
-  Symphony gives it, with the number of the next step. At a human review the loop node turns into
+  Symphony gives it, with the number of the next step. At a human review the loop's row turns into
   the orange square, and the loop panel shows your instructions and the files in the review's input
   folder (click one to open it here, also from a remote machine). You approve (the loop moves on,
   or finishes if the review has no way out; with several ways out you pick one), or send the loop
@@ -148,7 +148,7 @@ button on a machine node; its node sits above that machine on the graph.
   ends without routing even after one reminder, when you stop a step's session, when a step's
   existing folder is missing, or when Symphony closes mid-step. A paused loop asks you to continue,
   rerun the step, send the loop back, or stop.
-- **On the graph.** Only the running step's session is shown, under the loop node; earlier runs
+- **In the list.** Only the running step's session is shown, under the loop's row; earlier runs
   are listed in the loop's history with "Open session". Loops saved before loops were graphs load
   as a chain of their steps, on their old project's machine, with the project folder as every agent
   step's session folder; give their steps input and output folders before running them again.
@@ -159,7 +159,7 @@ A tool is a module of this repo with its own logic, skills, agent tools and pane
 kind of work done. Tools belong to Symphony, not to a machine: pick one from the tools button in the
 dock, and its panel shows what it has on every machine. Each time you run it, you pick the machine it
 runs on (this PC, or a remote machine); that run's files and sessions live there, and its sessions
-appear on the graph like any other. Each tool documents what it does, what it needs (API keys,
+appear in the list like any other. Each tool documents what it does, what it needs (API keys,
 browsers, SDKs that Symphony itself does not) and how to use it:
 
 | Tool | What it does |
@@ -223,11 +223,11 @@ Set up, once per remote machine:
    only each other (pinned certificates, mutual TLS); the remote machine dials out, so no port is
    opened on it.
 
-On the orchestrator each remote machine is its own root on the graph, with its `~/.claude` hub and
-projects under it; remote projects carry the machine's name. Everything works as for local
+On the orchestrator each remote machine is listed in the sidebar under This PC, and its projects,
+sessions and loops are in the list like local ones, each tagged with the machine's name. Everything works as for local
 projects: the prompt pipeline with live thinking and tool calls, approvals and questions, replies,
 loops (including human steps; files in their folders are fetched and opened here), the diff
-viewer, CLAUDE.md, skills, MCP, and terminals if the remote machine allows them. Its machine node,
+viewer, CLAUDE.md, and terminals if the remote machine allows them. Its entry in the sidebar,
 like This PC's, carries that machine's auto-approve toggle, a button for a new loop on it, the folder browser for adding a
 project from its shared folders, a terminal button, and its battery when it runs on battery. The
 usage meter is this machine's only; remote machines stop polling usage while linked. A repo cloned on two machines is two separate projects.
@@ -238,9 +238,9 @@ link drops without a goodbye, it stays read-only for a grace period (2 minutes b
 settable, 0 to turn it off) while it redials. If the same approval is answered on both sides, the
 first answer wins and the other side is told so.
 
-Offline machines are unmistakable but never orange: the machine node turns into a broken ring
-labelled "offline", "asleep" or "quit" with the time, everything under it fades to 40% with dashed
-edges, and open panels say they show the last known state, with every action disabled. On return
+Offline machines are unmistakable but never orange: the machine in the sidebar turns into a broken
+ring labelled "offline", "asleep" or "quit" with the time, its tag on every session, project and loop
+turns dashed and says "offline", "asleep" or "quit", its rows fade, and open panels say they show the last known state, with every action disabled. On return
 the orchestrator takes a fresh snapshot and fetches open transcripts again; requests interrupted by
 a drop are resent with the same id and run once. What the orchestrator knows about each machine is
 saved, so after a restart every paired machine appears at once, offline, with its last state.
@@ -341,7 +341,7 @@ Either side can revoke the other.
 ## Auto-approve and dictation
 
 **Auto-approve** answers Claude Code's permission prompts with "allow" for every session and loop
-step on its machine while it is on; each machine node has its own toggle. It does not answer Claude's questions, which still need you. It does not
+step on its machine while it is on; each machine in the sidebar has its own toggle. It does not answer Claude's questions, which still need you. It does not
 override `ask` rules you set in Claude Code settings (those prompts are still asked), and deny rules
 are applied by Claude Code before Symphony is asked. Each auto-allowed action stays in the
 transcript as "auto-allowed".
@@ -372,7 +372,7 @@ servers and usage) runs on your Claude subscription, never on per-token billing.
    This catches an `apiKeyHelper` in any settings file and a Bedrock/Vertex/Foundry setup.
 3. **Every turn.** If a turn's start ever reports an API-key source, the session is stopped.
 
-A refused session shows why in its view, and its node stays on the graph.
+A refused session shows why in its view, and its row stays in the list.
 
 This applies to Claude Code processes started by Symphony. The embedded terminal is your own shell
 with your own environment, so a `claude` you run there yourself is not covered.
@@ -385,9 +385,10 @@ with your own environment, so a `claude` you run there yourself is not covered.
 | Connection to Claude Code | Agent SDK only (`@anthropic-ai/claude-agent-sdk`), no direct CLI calls | The SDK streams thinking, text and tool calls as typed messages, reports subagents (`task_started` / `task_notification`), routes every permission prompt and `AskUserQuestion` through one callback (`canUseTool`), and exposes `supportedCommands()`, `supportedModels()` and `mcpServerStatus()`. With the CLI alone, Symphony would have to scrape output and could not answer approvals. The SDK also bundles the Claude Code binary for each OS. |
 | Slash commands | Sent as the prompt text (`/optimize-prompt …`) | Verified against the SDK: commands typed this way are dispatched like in the terminal unless `verbatimPrompts` is on. |
 | Discovering skills and MCP servers | Start Claude Code in the folder without sending a prompt, read `initializationResult()` and `mcpServerStatus()`, then close | The CLI is the authority on what it loaded (settings sources, plugins, claude.ai connectors, scopes), and no prompt means no tokens are spent. A filesystem scan only adds the SKILL.md paths for preview. Refreshes on start, when a project is added, after a skill/MCP session, and every 3 minutes. |
-| Graph | React Flow (`@xyflow/react`) | Mature, renders custom React nodes, and dragging is built in. Its background grid, minimap, controls, attribution and keyboard shortcuts are all turned off. |
+| Main window | A list of sessions grouped by project, workspaces and machines in a sidebar | A graph of every session, subagent, skill and MCP server became hard to scan with many sessions; a list reads top to bottom, newest first. Positions saved by the graph version stay in the saved state, so older data loads unchanged, but the window ignores them. |
+| Loop editor | React Flow (`@xyflow/react`) | A loop is a graph of steps and folders that you wire by hand. React Flow is mature, renders custom React nodes, and dragging and connecting are built in. Its background grid, minimap, controls, attribution and keyboard shortcuts are all turned off. |
 | Diff, preview and editor | Monaco (the editor inside VS Code), bundled locally | The brief asks for VS Code-level diffs; Monaco's diff editor is the same component. Only the editor features and syntax tokenizers are loaded, not the language services, so read-only diffs never show error squiggles. One `Viewer` component serves the git diff, SKILL.md preview, MCP details and the CLAUDE.md editor. |
-| Signal color | Safety orange `#FF6A13` | Signal yellow sits close to the bone-white type in brightness, so a yellow-filled node would read as "highlighted" rather than "different". Orange differs from the white in both hue and brightness, and stays visible on charcoal at small sizes. |
+| Signal color | Safety orange `#FF6A13` | Signal yellow sits close to the bone-white type in brightness, so a yellow-filled shape would read as "highlighted" rather than "different". Orange differs from the white in both hue and brightness, and stays visible on charcoal at small sizes. |
 | Greys | `#131312` background, `#1A1A18` panels, `#2A2926` / `#3B3A36` hairlines, `#5E5C56` / `#8D8A82` / `#B7B3AA` text greys, `#E9E5DC` bone type | Slightly warm neutrals so bone-white type does not look blue against the background. Syntax highlighting is monochrome too. |
 | Diff tints | Desaturated green/red at 16–20% alpha | Separates added and removed lines while staying far dimmer than the signal color. |
 | Type | IBM Plex Sans + IBM Plex Mono, bundled | Engineered and legible at small sizes, and avoids the generic Inter look. |
@@ -434,10 +435,11 @@ with your own environment, so a `claude` you run there yourself is not covered.
 | `src/shared/remote.ts` | The link protocol: frames, timings, which request goes where, ID prefixes |
 | `src/preload/index.ts` | The `window.symphony` bridge (context-isolated, sandboxed) |
 | `src/shared/` | Types and the IPC contract shared by both sides |
-| `src/renderer/src/components/Graph.tsx` | Layout and interactions of the graph |
+| `src/renderer/src/components/SessionList.tsx` | The main list: notes, projects with their actions and sessions, subagents, loops |
+| `src/renderer/src/components/Sidebar.tsx`, `Machines.tsx`, `Notes.tsx` | Workspaces, machines with their actions, GitHub account and color, the dock buttons, machine tags, sticky notes |
 | `src/renderer/src/components/Glyph.tsx` | The status shape: arc, square, diamond, outline, shake |
 | `src/renderer/src/components/SessionView.tsx` | Session and subagent views |
-| `src/renderer/src/components/Viewer.tsx` | Diff viewer, skill preview, MCP details, CLAUDE.md editor |
+| `src/renderer/src/components/Viewer.tsx` | Diff viewer, CLAUDE.md editor |
 | `src/renderer/src/components/TerminalPanel.tsx` | Floating terminal (xterm.js) |
 | `src/renderer/src/components/UsagePanel.tsx` | Usage bars and reset times |
 | `src/renderer/src/components/LoopPanel.tsx` | Loop editor (the graph of steps and folders), running view, human review card, history |
@@ -453,7 +455,14 @@ with your own environment, so a `claude` you run there yourself is not covered.
 
 ## What was verified on Windows
 
-These were exercised against a real git repository (a small JS project with uncommitted changes)
+The session list was checked in the built app, driven by Playwright, with a profile saved by the
+graph version (node positions, two workspaces, notes): it opened without errors with each project's
+sessions newest first, the machine tag on every row, notes rendered from markdown, switching
+workspaces, a new note edited in place, the prompt bubble from New session, a session opened from its
+row, a minimized panel's chip, and the color menu on a machine. Offline remote machines in the list
+were not exercised with a second machine.
+
+Earlier, these were exercised against a real git repository (a small JS project with uncommitted changes)
 on Windows 11, driving the built app:
 
 - Adding a project; +/− counts matching `git diff` plus untracked files; dragging a project and
@@ -561,8 +570,6 @@ Not verified on this machine:
 - **The GitHub identity shown when an account is signed in.** gh had no account here, so sessions
   showed "no GitHub account". The token injection and the parsing of gh's login output were tested
   separately. The in-app login panel was not opened, so the browser approval step was not run.
-- **Right-clicking an MCP server.** It uses the same session path as skills, but no MCP config was
-  edited during testing, to leave the real configuration alone.
 - **Packaging into an installer.** Symphony runs from source (`npm start`). `platform.ts` already
   resolves the Claude binary from an unpacked asar, but no electron-builder config exists yet.
 
@@ -596,10 +603,6 @@ All of this lives in `src/main/platform.ts` unless noted.
 
 ## Known limitations
 
-- MCP servers in "needs auth" (for example claude.ai connectors) stay orange until you authenticate
-  them where they are managed, such as claude.ai's connector settings; Symphony shows the state but
-  cannot complete that sign-in.
-- Edits to plugin or claude.ai-synced skills can be overwritten by the next plugin update or sync;
-  the change session is told to mention this.
 - The cost shown at the end of each turn is the session's running total, as the SDK reports it.
-- Every MCP check starts Claude Code and connects all configured servers for a few seconds.
+- Every MCP check starts Claude Code and connects all configured servers for a few seconds. Symphony
+  still discovers skills and MCP servers in the background; the window no longer lists them.

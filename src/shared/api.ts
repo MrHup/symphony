@@ -44,6 +44,8 @@ export interface InvokeApi {
   /** Workspaces stay on this machine. Create adds one and selects it. */
   workspaceCreate(): Promise<Workspace>
   workspaceSelect(id: string): Promise<void>
+  /** A new name for a workspace (trimmed; at most WORKSPACE_NAME_MAX characters). */
+  workspaceRename(id: string, name: string): Promise<void>
   /** Moves a project, note or loop to a workspace. */
   workspaceAssign(nodeId: string, workspaceId: string): Promise<void>
   /** optimize false: start the task session with the prompt as written, without /optimize-prompt. */
@@ -162,6 +164,7 @@ export const INVOKE_METHODS: (keyof InvokeApi)[] = [
   'noteDelete',
   'workspaceCreate',
   'workspaceSelect',
+  'workspaceRename',
   'workspaceAssign',
   'startPipeline',
   'startConfigSession',

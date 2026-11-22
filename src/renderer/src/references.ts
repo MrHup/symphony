@@ -1,4 +1,4 @@
-// Reference files: dropped onto a project (its node, its prompt bubble or a session's reply box),
+// Reference files: dropped onto a project (its section in the list, its prompt bubble or a session's reply box),
 // saved in the project's .claude-references folder, and mentioned in prompts as
 // @.claude-references/<name>. The contents travel in the request, so a remote project works the same.
 import { useCallback, useEffect, useState } from 'react'

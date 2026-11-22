@@ -83,13 +83,26 @@ export const IconLoop = ({ size = 14 }: { size?: number }) => (
   </svg>
 )
 
-/** A small tree: arrange the graph. */
-export const IconArrange = ({ size = 16 }: { size?: number }) => (
-  <svg width={size} height={size} viewBox="0 0 16 16" {...base}>
-    <rect x="1.75" y="6.5" width="3" height="3" rx="0.5" />
-    <rect x="11.25" y="2.5" width="3" height="3" rx="0.5" />
-    <rect x="11.25" y="10.5" width="3" height="3" rx="0.5" />
-    <path d="M4.75 8H8M8 4v8M8 4h3.25M8 12h3.25" />
+/** A chevron pointing right; rotated a quarter turn while its section is open. */
+export const IconChevron = ({ size = 12 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 12 12" {...base}>
+    <path d="M4.5 2.75L7.75 6 4.5 9.25" />
+  </svg>
+)
+
+/** A pencil: rename. */
+export const IconPencil = ({ size = 12 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 12 12" {...base}>
+    <path d="M7.75 2.25l2 2-5.5 5.5H2.25v-2z" />
+    <path d="M6.5 3.5l2 2" />
+  </svg>
+)
+
+/** A page with a folded corner: a sticky note. */
+export const IconNote = ({ size = 14 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 14 14" {...base}>
+    <path d="M2.25 2.25h9.5v6l-3.5 3.5h-6z" />
+    <path d="M11.75 8.25h-3.5v3.5" />
   </svg>
 )
 

@@ -2,7 +2,7 @@ import { applyNodeChanges, Handle, MarkerType, Position, ReactFlow, ReactFlowPro
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { EffortLevel, LoopDraft, LoopEdge, LoopFile, LoopFolder, LoopFolderRole, LoopInfo, LoopMove, LoopStep, LoopStepKind, Point } from '@shared/types'
 import { readImage } from '../images'
-import { api, claimForWorkspace, clock, loopStatus, machineConfig, useLock, useStore, type Panel } from '../store'
+import { api, claimForWorkspace, clock, loopStatus, machineConfig, useLock, useModelLabel, useStore, type Panel } from '../store'
 import { Attachments } from './Attachments'
 import { sizeText, Viewable } from './Files'
 import { useDictation } from '../speech/dictation'
@@ -12,7 +12,6 @@ import { FloatingPanel } from './FloatingPanel'
 import { Glyph } from './Glyph'
 import { IconClose, IconFolder, IconTrash } from './icons'
 import { Markdown } from './Markdown'
-import { useModelLabel } from './nodes'
 
 const DEFAULT_MAX_RUNS = 12
 const STATE_LABEL: Record<LoopInfo['state'], string> = {

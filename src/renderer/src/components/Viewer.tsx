@@ -5,7 +5,6 @@ import { editorFont, languageFor } from '../monaco'
 import { api, useLock, useStore, type Panel } from '../store'
 import { cleanError } from './Composer'
 import { FloatingPanel } from './FloatingPanel'
-import { Glyph } from './Glyph'
 import { IconMinus, IconPlus, IconRefresh } from './icons'
 import { Markdown } from './Markdown'
 
@@ -338,76 +337,6 @@ export function DiffPanel({ panel }: { panel: Panel }) {
         diff={diff && !diff.binary && current ? { original: diff.original, modified: diff.modified, language: languageFor(current.file.path), sideBySide } : undefined}
         empty={stats?.isRepo === false ? 'This folder is not a git repository.' : diff?.binary ? 'Binary file' : changes.length ? '' : 'No uncommitted changes.'}
       />
-    </FloatingPanel>
-  )
-}
-
-// ---------- skill ----------
-
-export function SkillPanel({ panel }: { panel: Panel }) {
-  const skill = useStore((s) => s.skills.find((k) => k.id === panel.targetId))
-  const [content, setContent] = useState<string | null>(null)
-  const [mode, setMode] = useState<'source' | 'rendered'>('source')
-  useEffect(() => {
-    api
-      .readSkill(panel.targetId)
-      .then((r) => setContent(r.content))
-      .catch(() => setContent(null))
-  }, [panel.targetId, skill?.path])
-  if (!skill) return null
-  const body = content?.replace(/^---[\s\S]*?\n---\r?\n?/, '') ?? ''
-  return (
-    <FloatingPanel panel={panel} machineId={skill.machineId} title={skill.name} meta={`${skill.scope} skill`}>
-      <Viewer
-        bar={
-          <>
-            <span className="path" title={skill.path}>
-              {skill.path}
-            </span>
-            <div className="seg">
-              <button className={mode === 'source' ? 'is-on' : ''} onClick={() => setMode('source')}>
-                Source
-              </button>
-              <button className={mode === 'rendered' ? 'is-on' : ''} onClick={() => setMode('rendered')}>
-                Rendered
-              </button>
-            </div>
-          </>
-        }
-        doc={content !== null && mode === 'source' ? { content, language: languageFor(skill.path), readOnly: true } : undefined}
-        rendered={content !== null && mode === 'rendered' ? body : undefined}
-        empty={content === null ? 'Could not read this file.' : ''}
-      />
-    </FloatingPanel>
-  )
-}
-
-// ---------- MCP server ----------
-
-export function McpPanel({ panel }: { panel: Panel }) {
-  const mcp = useStore((s) => s.mcp.find((m) => m.id === panel.targetId))
-  const lock = useLock(mcp?.machineId)
-  if (!mcp) return null
-  const statusOf = { connected: 'idle', pending: 'working', 'needs-auth': 'input', failed: 'idle', disabled: 'finished' } as const
-  const details = JSON.stringify({ status: mcp.status, scope: mcp.scope, source: mcp.source, error: mcp.error, tools: mcp.tools, config: mcp.config }, null, 2)
-  return (
-    <FloatingPanel
-      panel={panel}
-      machineId={mcp.machineId}
-      title={
-        <span style={{ display: 'inline-flex', gap: 10, alignItems: 'center' }}>
-          <Glyph status={statusOf[mcp.status]} size={9} variant={mcp.status === 'failed' ? 'failed' : 'default'} />
-          {mcp.name}
-        </span>
-      }
-      meta={`${mcp.status}${mcp.scope ? ` · ${mcp.scope}` : ''}`}
-      actions={
-        <button className="icon-btn" title="Check again" disabled={!!lock} onClick={() => void api.refreshConfig(mcp.machineId ?? 'local')}>
-          <IconRefresh />
-        </button>
-      }
-    >
-      <Viewer bar={<span className="path">{mcp.tools.length} tools · secrets hidden</span>} doc={{ content: details, language: 'javascript', readOnly: true }} />
     </FloatingPanel>
   )
 }

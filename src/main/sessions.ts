@@ -12,7 +12,11 @@ import { REFERENCES_PROMPT } from './references'
 import { deleteTranscript, loadTranscript, saveTranscript } from './store'
 import { keySourceProblem, subscriptionEnv, subscriptionProblem, subscriptionSettings } from './subscription'
 
-/** Close a finished session's Claude Code process after this long without a follow-up; a later follow-up resumes it. */
+/**
+ * Close a session's Claude Code process after it has been idle this long: no turn running, no
+ * question or approval waiting, and no background task (subagent, shell) still working. A later
+ * follow-up resumes it.
+ */
 const IDLE_CLOSE_MS = 10 * 60_000
 /** Finished agents stay on the graph this long so their exit is visible. */
 const AGENT_LINGER_MS = 1600
@@ -95,6 +99,12 @@ interface Runtime {
   /** Streaming thinking/text items per parent, in block order, waiting for their final assistant block. */
   live: Map<string, TranscriptItem[]>
   idleTimer?: NodeJS.Timeout
+  /**
+   * Background tasks (subagents, shells, monitors) still running in this session's process, by
+   * task id. They outlive the turn that started them and die with the process, so it stays open
+   * until they end.
+   */
+  tasks: Set<string>
   /** Kept so a resumed process gets the same extra tools and folders. */
   tools?: SessionTools
   dirs?: string[]
@@ -142,17 +152,29 @@ function toolResultText(content: unknown): string {
   return ''
 }
 
+/** Seams for tests: a fake Claude Code process and a shorter idle window. */
+export interface SessionManagerOptions {
+  query?: typeof query
+  idleCloseMs?: number
+}
+
 export class SessionManager {
   private runtimes = new Map<string, Runtime>()
   /** While on, permission prompts are allowed without asking. Off at every start of Symphony. */
   private autoApprove = false
   private agents = new Map<string, AgentInfo>()
+  private runQuery: typeof query
+  private idleCloseMs: number
 
   constructor(
     private emit: (e: MainEvent) => void,
     private onSessionsChanged: () => void,
-    private assets: AssetStore
-  ) {}
+    private assets: AssetStore,
+    options: SessionManagerOptions = {}
+  ) {
+    this.runQuery = options.query ?? query
+    this.idleCloseMs = options.idleCloseMs ?? IDLE_CLOSE_MS
+  }
 
   /** Re-create sessions from disk after a restart. Their processes are gone, so they show as finished and resume on follow-up. */
   restore(sessions: SessionInfo[]): void {
@@ -183,7 +205,7 @@ export class SessionManager {
   }
 
   private newRuntime(info: SessionInfo, env: Record<string, string>): Runtime {
-    return { info, items: [], env, turnActive: false, pending: new Map(), live: new Map(), dirty: new Set() }
+    return { info, items: [], env, turnActive: false, pending: new Map(), live: new Map(), dirty: new Set(), tasks: new Set() }
   }
 
   start(opts: StartOptions): SessionInfo {
@@ -319,9 +341,9 @@ export class SessionManager {
     return true
   }
 
-  /** True while any session is running a turn or waiting for an answer. */
+  /** True while any session is running a turn, waiting for an answer, or has background tasks running. */
   busy(): boolean {
-    return [...this.runtimes.values()].some((rt) => rt.turnActive || rt.pending.size > 0)
+    return [...this.runtimes.values()].some((rt) => rt.turnActive || rt.pending.size > 0 || rt.tasks.size > 0)
   }
 
   // ---------- internals ----------
@@ -409,7 +431,7 @@ export class SessionManager {
 
     // The optimize step only rewrites a prompt; every other session can show files.
     const show = rt.info.kind !== 'optimize'
-    const q = query({
+    const q = this.runQuery({
       prompt: input,
       options: {
         cwd: rt.info.cwd,
@@ -491,6 +513,7 @@ export class SessionManager {
         rt.turnActive = false
         for (const p of rt.pending.values()) p.resolve({ behavior: 'deny', message: 'Session closed.' })
         rt.pending.clear()
+        this.clearTasks(rt)
         this.finishLive(rt)
         for (const agent of [...this.agents.values()]) if (agent.sessionId === rt.info.id) this.removeAgent(agent.id)
         if (this.runtimes.has(rt.info.id)) this.refreshStatus(rt)
@@ -500,6 +523,9 @@ export class SessionManager {
 
   private closeProcess(rt: Runtime): void {
     clearTimeout(rt.idleTimer)
+    rt.idleTimer = undefined
+    // Whatever still ran in the background ends with the process.
+    this.clearTasks(rt)
     const q = rt.q
     rt.q = undefined
     rt.input?.close()
@@ -513,12 +539,16 @@ export class SessionManager {
         this.handleSystem(rt, msg)
         break
       case 'stream_event':
+        this.noteActivity(rt, msg.parent_tool_use_id)
         this.handleStream(rt, msg.event as unknown as StreamEvent, msg.parent_tool_use_id)
         break
       case 'assistant':
+        this.noteActivity(rt, msg.parent_tool_use_id)
         for (const block of msg.message.content as unknown as ContentBlock[]) this.handleAssistantBlock(rt, block, msg.parent_tool_use_id)
         break
       case 'user':
+        // A replayed message repeats earlier input; it does not start a turn.
+        if (!('isReplay' in msg && msg.isReplay)) this.noteActivity(rt, msg.parent_tool_use_id)
         this.handleUser(rt, msg)
         break
       case 'result': {
@@ -528,11 +558,54 @@ export class SessionManager {
         const text = msg.subtype === 'success' ? msg.result : `Ended with ${msg.subtype.replace(/_/g, ' ')}`
         this.upsert(rt, { kind: 'result', id: msg.uuid, text, isError, costUsd: msg.total_cost_usd, durationMs: msg.duration_ms })
         this.refreshStatus(rt)
-        rt.idleTimer = setTimeout(() => this.closeProcess(rt), IDLE_CLOSE_MS)
+        this.armIdleClose(rt)
         rt.onResult?.(text, isError)
         break
       }
     }
+  }
+
+  /**
+   * A main-thread message while no turn is running is a turn Claude Code started on its own, for
+   * example to read a background task's notification. It counts as work: the idle timer stops and
+   * the session shows as working until that turn's result. Subagents' messages (with a parent)
+   * belong to their task, which keeps the process open by itself.
+   */
+  private noteActivity(rt: Runtime, parent: string | null): void {
+    if (parent !== null || rt.turnActive) return
+    clearTimeout(rt.idleTimer)
+    rt.idleTimer = undefined
+    rt.turnActive = true
+    this.refreshStatus(rt)
+  }
+
+  /** Start the idle countdown, but only if the process is truly idle; anything still running keeps it open. */
+  private armIdleClose(rt: Runtime): void {
+    clearTimeout(rt.idleTimer)
+    rt.idleTimer = undefined
+    if (!rt.q || rt.turnActive || rt.pending.size > 0 || rt.tasks.size > 0) return
+    rt.idleTimer = setTimeout(() => {
+      rt.idleTimer = undefined
+      // Checked again: work may have started since without passing through here.
+      if (rt.turnActive || rt.pending.size > 0 || rt.tasks.size > 0) return
+      this.closeProcess(rt)
+    }, this.idleCloseMs)
+  }
+
+  private trackTask(rt: Runtime, taskId: string, running: boolean): void {
+    const before = rt.tasks.size
+    if (running) rt.tasks.add(taskId)
+    else rt.tasks.delete(taskId)
+    if (rt.tasks.size === before) return
+    // busy() changed: tell listeners (the remote link keeps the machine awake while busy).
+    if (before === 0 || rt.tasks.size === 0) this.emitSession(rt)
+    if (!running) this.armIdleClose(rt)
+  }
+
+  private clearTasks(rt: Runtime): void {
+    if (!rt.tasks.size) return
+    rt.tasks.clear()
+    if (this.runtimes.has(rt.info.id)) this.emitSession(rt)
   }
 
   private handleSystem(rt: Runtime, msg: Extract<SDKMessage, { type: 'system' }>): void {
@@ -544,6 +617,10 @@ export class SessionManager {
         this.emitSession(rt)
       }
     } else if (msg.subtype === 'task_started') {
+      // Every task that is real work keeps the process open, shells included; ambient
+      // housekeeping does not.
+      if (!msg.ambient) this.trackTask(rt, msg.task_id, true)
+      // Only subagents appear on the graph.
       if (msg.ambient || msg.skip_transcript) return
       if (msg.task_type && msg.task_type !== 'local_agent') return
       const agent: AgentInfo = {
@@ -558,9 +635,13 @@ export class SessionManager {
       this.emit({ type: 'agent', agent })
     } else if (msg.subtype === 'task_notification') {
       this.finishAgent(msg.task_id)
+      this.trackTask(rt, msg.task_id, false)
     } else if (msg.subtype === 'task_updated') {
       const s = msg.patch.status
-      if (s === 'completed' || s === 'failed' || s === 'killed') this.finishAgent(msg.task_id)
+      if (s === 'completed' || s === 'failed' || s === 'killed') {
+        this.finishAgent(msg.task_id)
+        this.trackTask(rt, msg.task_id, false)
+      }
     }
   }
 
